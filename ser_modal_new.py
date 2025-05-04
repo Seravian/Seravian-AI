@@ -132,9 +132,9 @@ def convert_to_wav(input_path: str, output_path: str) -> bool:
 
 
 def get_api_key(
-    api_key: str = Depends(APIKeyHeader(name="whisper_emotion_combined_key")),
+    api_key: str = Depends(APIKeyHeader(name="whisper_emotion_combined_api_key")),
 ):
-    if api_key != os.environ["WHISPER_EMOTION_COMBINED_KEY"]:
+    if api_key != os.environ["WHISPER_EMOTION_COMBINED_API_KEY"]:
         raise HTTPException(status_code=403, detail="Forbidden")
     return api_key
 
@@ -316,7 +316,7 @@ async def process_audio(
 
 
 @app.function(
-    secrets=[modal.Secret.from_name("whisper-emotion-combined-key")],
+    secrets=[modal.Secret.from_name("whisper-emotion-combined-api-key")],
     image=image,
     gpu="any",
     volumes={"/root/.cache/huggingface": model_cache_volume, "/logs": log_volume},
