@@ -89,6 +89,7 @@ def get_emotion_pipeline():
             model="firdhokk/speech-emotion-recognition-with-openai-whisper-large-v3",
             device=device,
             return_all_scores=True,
+            
         )
     return emotion_classifier
 
@@ -238,10 +239,10 @@ async def process_audio(
         )
 
         def run_emotion():
-            return emotion_pipe(wav_path)
+            return emotion_pipe(wav_path,generate_kwargs={"language":"english"})
 
         def run_asr():
-            return asr_pipe(wav_path)
+            return asr_pipe(wav_path,generate_kwargs={"language":"english"})
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             # Run both tasks in parallel
