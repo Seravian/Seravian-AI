@@ -41,6 +41,12 @@ image = (
 
 # Create a Modal Stub (this is your app)
 app = modal.App("mentallama-chat-7b")
+fastapi_app = FastAPI(
+    title="MentaLLaMA Chat API",
+    description="API for interacting with MentaLLaMA LLM",
+    version="1.0.0",
+)
+
 
 # Model name to use
 model_name = "klyang/MentaLLaMA-chat-7B"
@@ -74,6 +80,10 @@ def load_model():
         print("Model downloaded and saved to volume successfully!")
     else:
         print("Model already cached in volume")
+
+
+# Ensure model is loaded in the volume
+load_model.remote()
 
 
 # Function to generate response
@@ -135,24 +145,16 @@ def generate_response(conversation_history, user_message):
     secrets=[modal.Secret.from_name("mentallama-api-key")],
 )
 @modal.asgi_app()
-def seravian_llm():
-    fastapi_app = FastAPI(
-        title="MentaLLaMA Chat API",
-        description="API for interacting with MentaLLaMA LLM",
-        version="1.0.0",
-    )
-
-    # Ensure model is loaded in the volume
-    load_model.remote()
-
-    @fastapi_app.post("/", response_model=ChatResponse)
-    async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
-        try:
-            response = generate_response.remote(request.history, request.message)
-            return ChatResponse(response=response)
-        except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Error generating response: {str(e)}"
-            )
-
+def wrapper():
     return fastapi_app
+
+
+@fastapi_app.post("/", response_model=ChatResponse)
+async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
+    try:
+        response = generate_response.remote(request.history, request.message)
+        return ChatResponse(response=response)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error generating response: {str(e)}"
+        )
