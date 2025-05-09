@@ -128,7 +128,7 @@ def generate_response(conversation_history):
         top_p=0.9,  # Nucleus sampling
         repetition_penalty=1.2,  # Penalize repetition
     )
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    response: str = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
@@ -197,7 +197,7 @@ def generate_response_version2(message: str, chat_id: str):
         top_p=0.9,  # Nucleus sampling
         repetition_penalty=1.2,  # Penalize repetition
     )
-    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    response: str = tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
