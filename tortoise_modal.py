@@ -4,6 +4,7 @@ import io
 import tempfile
 import base64
 from typing import Dict, List, Optional
+from fastapi.params import Depends
 import modal
 import torch
 import torchaudio
@@ -15,14 +16,21 @@ import logging
 import time
 from pythonjsonlogger import jsonlogger
 import tortoise
-
+from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 import tortoise.voices
+from fastapi import Depends, FastAPI, File, Form, UploadFile, HTTPException
+
 class UTCFormatter(jsonlogger.JsonFormatter):
     converter = time.gmtime
 
 # Define the Modal app
 app = modal.App("tortoise-tts-api")
-
+def get_api_key(
+    api_key: str = Depends(APIKeyHeader(name="whisper_emotion_combined_api_key")),
+):
+    if api_key != os.environ["TORTOISE_TTS_API_KEY"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return api_key
 # Create volume for model caching
 model_cache_volume = modal.Volume.from_name(
     "tortoise-model-cache", 
@@ -252,9 +260,10 @@ def generate_speech(request_dict):
         logger.error(error_msg)
         raise ValueError(error_msg)
 
-@app.function(image=image, cpu=1.0, volumes={"/model_cache": model_cache_volume})
+@app.function(image=image, cpu=1.0, volumes={"/model_cache": model_cache_volume},
+              secrets=[modal.Secret.from_name("tortoise-tts-api-key")])
 @fastapi_app.post("/tts")
-async def tts(request: TTSRequest) -> TTSResponse:
+async def tts(request: TTSRequest,api_key:str = Depends(get_api_key)) -> TTSResponse:
     """Web endpoint for TTS generation."""
     try:
         # Log the incoming request
