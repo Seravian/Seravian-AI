@@ -1,6 +1,6 @@
 import json
 from typing import List, Dict
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import modal
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
@@ -15,7 +15,10 @@ class ChatRequest(BaseModel):
 
 class ChatRequestVersion2(BaseModel):
     message: str
-    chat_id: str
+    chat_id: str = Field(..., alias="chatId")
+
+    class Config:
+        validate_by_name = True  # Enables
 
 
 class ChatResponse(BaseModel):
@@ -56,7 +59,7 @@ app = modal.App("mentallama-chat-7b")
 # Model name to use
 model_name = "klyang/MentaLLaMA-chat-7B"
 model_path = "/model"
-chat_history_path = ""
+chat_history_path = "/chat-history"
 
 
 # Initialize tokenizer and model once per container
@@ -166,12 +169,17 @@ def generate_response_version2(message: str, chat_id: str):
     if os.path.exists(filename):
         with open(filename, "r") as f:
             conversation_history = [
-                {"role": line.split(":")[0], "content": line.split(":")[1].strip()}
+                {
+                    "role": line.split(": ", maxsplit=1)[0],
+                    "content": line.split(": ", maxsplit=1)[1].strip(),
+                }
                 for line in f.readlines()
             ]
     else:
         with open(filename, "w") as f:
             f.write("")
+
+    conversation_history.append({"role": "user", "content": message})
     # endregion
 
     # Format history for the model
@@ -238,8 +246,11 @@ def seravian_llm():
 
     @fastapi_app.post("/v2", response_model=ChatResponse)
     async def chat(request: ChatRequestVersion2):
+
         try:
-            response = generate_response.remote(request.history)
+            response = generate_response_version2.remote(
+                request.message, request.chat_id
+            )
             return ChatResponse(response=response)
         except Exception as e:
             raise HTTPException(
