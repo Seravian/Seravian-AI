@@ -57,6 +57,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 logger.addHandler(file_handler)
 
+
 # Create an image with the necessary dependencies
 image = (
     modal.Image.debian_slim()
@@ -78,21 +79,27 @@ image = (
 )
 
 
+def to_camel(string: str) -> str:
+    parts = string.split("_")
+    return parts[0] + "".join(word.capitalize() for word in parts[1:])
+
+
 # Input model for the API
 class TTSRequest(BaseModel):
     text: str
     voice: str = "random"  # Default voice
     preset: str = "fast"  # Options: ultra_fast, fast, standard, high_quality
-    num_autoregressive_samples: int = Field(50, alias="numAutoregressiveSamples")
+    num_autoregressive_samples: int = 50
     seed: Optional[int] = None
     temperature: float = 0.8
-    length_penalty: float = Field(1.0, alias="lengthPenalty")
-    repetition_penalty: float = Field(2.0, alias="repetitionPenalty")
-    top_p: float = Field(0.8, alias="topP")
-    max_mel_tokens: int = Field(500, alias="maxMeTokens")
+    length_penalty: float = 1
+    repetition_penalty: float = 2
+    top_p: float = 0.8
+    max_mel_tokens: int = 500
 
     class Config:
-        validate_by_name = True  # Enables
+        alias_generator = to_camel
+        allow_population_by_field_name = True
 
 
 # Output model for the API
