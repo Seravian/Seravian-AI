@@ -182,8 +182,20 @@ def generate_response_version2(message: str, chat_id: str):
     # endregion
 
     # Format history for the model
+
+    # endregion
+
+    system_prompt = (
+        "You are MentalLLaMA, a mental health support assistant."
+        + " The following is a conversation with a user seeking mental health support.\n\n"
+    )
+
+    # Format history for the model
     chat_input = (
-        "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        system_prompt
+        + "".join(
+            f"{turn['role']}: {turn['content']}\n" for turn in conversation_history
+        )
         + "assistant:"
     )
 
