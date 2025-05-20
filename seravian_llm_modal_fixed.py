@@ -180,12 +180,11 @@ def generate_response_version2(message: str, chat_id: str):
     conversation_history.append({"role": "user", "content": message})
 
     # endregion
+    system_prompt = "You are MentalLLaMA, a mental health support assistant. The following is a conversation with a user seeking mental health support.\n\n"
 
     # Format history for the model
-    chat_input = (
-        "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
-        + "assistant:"
-    )
+    chat_input = system_prompt + "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history) + "Assistant:"
+
 
     # Tokenize and generate response
     inputs = tokenizer(chat_input, return_tensors="pt", truncation=True).to("cuda")
