@@ -79,11 +79,6 @@ image = (
 )
 
 
-def to_camel(string: str) -> str:
-    parts = string.split("_")
-    return parts[0] + "".join(word.capitalize() for word in parts[1:])
-
-
 # Input model for the API
 class TTSRequest(BaseModel):
     text: str
@@ -96,10 +91,6 @@ class TTSRequest(BaseModel):
     repetition_penalty: float = 2
     top_p: float = 0.8
     max_mel_tokens: int = 500
-
-    class Config:
-        alias_generator = to_camel
-        allow_population_by_field_name = True
 
 
 # Output model for the API
