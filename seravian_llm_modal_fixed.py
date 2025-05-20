@@ -165,7 +165,7 @@ def generate_response_version2(message: str, chat_id: str):
     # region load history from local volume by chat_id as the filename.txt and create file if it doesn't exist
     # each line of file should be user: messageplaceholder or ai: responseplaceholder
 
-    filename = f"{chat_history_path}/{chat_id}.json"
+    filename = f"{chat_history_path}/{chat_id}.txt"
 
     if os.path.exists(filename):
         with open(filename, "r", encoding="utf-8") as f:
@@ -180,11 +180,12 @@ def generate_response_version2(message: str, chat_id: str):
     conversation_history.append({"role": "user", "content": message})
 
     # endregion
-    system_prompt = "You are MentalLLaMA, a mental health support assistant. The following is a conversation with a user seeking mental health support.\n\n"
 
     # Format history for the model
-    chat_input = system_prompt + "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history) + "Assistant:"
-
+    chat_input = (
+        "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        + "assistant:"
+    )
 
     # Tokenize and generate response
     inputs = tokenizer(chat_input, return_tensors="pt", truncation=True).to("cuda")
@@ -211,6 +212,7 @@ def generate_response_version2(message: str, chat_id: str):
 
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(conversation_history, f, indent=4, ensure_ascii=False)
+    # endregion
 
     return assistant_response
 
