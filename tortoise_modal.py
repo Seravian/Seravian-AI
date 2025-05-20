@@ -9,7 +9,7 @@ import modal
 import torch
 import torchaudio
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from tortoise.api import TextToSpeech
 from tortoise.utils.audio import load_voice
 import logging
@@ -83,13 +83,16 @@ class TTSRequest(BaseModel):
     text: str
     voice: str = "random"  # Default voice
     preset: str = "fast"  # Options: ultra_fast, fast, standard, high_quality
-    num_autoregressive_samples: int = 50
+    num_autoregressive_samples: int = Field(50, alias="numAutoregressiveSamples")
     seed: Optional[int] = None
     temperature: float = 0.8
-    length_penalty: float = 1.0
-    repetition_penalty: float = 2.0
-    top_p: float = 0.8
-    max_mel_tokens: int = 500
+    length_penalty: float = Field(1.0, alias="lengthPenalty")
+    repetition_penalty: float = Field(2.0, alias="repetitionPenalty")
+    top_p: float = Field(0.8, alias="topP")
+    max_mel_tokens: int = Field(500, alias="maxMeTokens")
+
+    class Config:
+        validate_by_name = True  # Enables
 
 
 # Output model for the API
