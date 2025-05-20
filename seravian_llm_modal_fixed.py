@@ -165,7 +165,7 @@ def generate_response_version2(message: str, chat_id: str):
     # region load history from local volume by chat_id as the filename.txt and create file if it doesn't exist
     # each line of file should be user: messageplaceholder or ai: responseplaceholder
 
-    filename = f"{chat_history_path}/{chat_id}.txt"
+    filename = f"{chat_history_path}/{chat_id}.json"
 
     if os.path.exists(filename):
         with open(filename, "r", encoding="utf-8") as f:
