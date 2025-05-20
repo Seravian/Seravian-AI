@@ -164,22 +164,21 @@ def generate_response_version2(message: str, chat_id: str):
 
     # region load history from local volume by chat_id as the filename.txt and create file if it doesn't exist
     # each line of file should be user: messageplaceholder or ai: responseplaceholder
-    conversation_history = []
+
     filename = f"{chat_history_path}/{chat_id}.txt"
+
     if os.path.exists(filename):
-        with open(filename, "r") as f:
-            conversation_history = [
-                {
-                    "role": line.split(": ", maxsplit=1)[0],
-                    "content": line.split(": ", maxsplit=1)[1].strip(),
-                }
-                for line in f.readlines()
-            ]
+        with open(filename, "r", encoding="utf-8") as f:
+            try:
+                conversation_history: list[dict] = json.load(f)
+
+            except json.JSONDecodeError:
+                conversation_history: list[dict] = []
     else:
-        with open(filename, "w") as f:
-            f.write("")
+        conversation_history: list[dict] = []
 
     conversation_history.append({"role": "user", "content": message})
+
     # endregion
 
     # Format history for the model
@@ -207,11 +206,12 @@ def generate_response_version2(message: str, chat_id: str):
     del tokenizer
     torch.cuda.empty_cache()
 
-    # region save history to local volume by chat_id as the filename.txt
-    with open(filename, "a") as f:
-        f.write(f"user: {message}\n")
-        f.write(f"assistant: {assistant_response}\n")
-    # endregion
+    conversation_history.append({"role": "assistant", "content": assistant_response})
+
+    # Step 3: Write updated list back to the file
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(conversation_history, f, indent=4, ensure_ascii=False)
 
     return assistant_response
 
