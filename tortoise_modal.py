@@ -32,9 +32,20 @@ app = modal.App("tortoise-tts-api")
 def get_api_key(
     api_key: str = Depends(APIKeyHeader(name="tortoise_tts_api_key")),
 ):
-    if api_key != os.environ["TORTOISE_TTS_API_KEY"]:
+    # Check if the environment variable exists before comparing
+    expected_api_key = os.environ.get("TORTOISE_TTS_API_KEY")
+    
+    # If the env var isn't set, log a warning and allow the request (for development)
+    if expected_api_key is None:
+        logging.warning("TORTOISE_TTS_API_KEY environment variable is not set. API key validation is disabled.")
+        return api_key
+    
+    # Otherwise, validate the API key
+    if api_key != expected_api_key:
         raise HTTPException(status_code=403, detail="Forbidden")
+    
     return api_key
+
 
 
 # Create volume for model caching
@@ -79,16 +90,11 @@ image = (
 )
 
 
-def to_camel(string: str) -> str:
-    parts = string.split("_")
-    return parts[0] + "".join(word.capitalize() for word in parts[1:])
-
-
 # Input model for the API
 class TTSRequest(BaseModel):
     text: str
     voice: str = "random"  # Default voice
-    preset: str = "fast"  # Options: ultra_fast, fast, standard, high_quality
+    preset: str = "ultra_fast"  # Options: ultra_fast, fast, standard, high_quality
     num_autoregressive_samples: int = 50
     seed: Optional[int] = None
     temperature: float = 0.8
@@ -96,10 +102,6 @@ class TTSRequest(BaseModel):
     repetition_penalty: float = 2
     top_p: float = 0.8
     max_mel_tokens: int = 500
-
-    class Config:
-        alias_generator = to_camel
-        allow_population_by_field_name = True
 
 
 # Output model for the API
@@ -166,7 +168,7 @@ def generate_speech(request_dict):
 
     # Extract parameters with defaults
     voice = request.get("voice", "tom")  # Default to "tom" instead of "random"
-    preset = request.get("preset", "fast")
+    preset = request.get("preset", "ultra_fast")
     seed = request.get("seed", None)
     temperature = request.get("temperature", 0.8)
     num_autoregressive_samples = request.get("num_autoregressive_samples", 50)
