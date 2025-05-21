@@ -88,32 +88,6 @@ image = (
     )
     .pip_install("tortoise-tts")
 )
-
-
-# Input model for the API
-class TTSRequest(BaseModel):
-    text: str
-    voice: str = "random"  # Default voice
-    preset: str = "ultra_fast"  # Options: ultra_fast, fast, standard, high_quality
-    num_autoregressive_samples: int = 50
-    seed: Optional[int] = None
-    temperature: float = 0.8
-    length_penalty: float = 1
-    repetition_penalty: float = 2
-    top_p: float = 0.8
-    max_mel_tokens: int = 500
-
-
-# Output model for the API
-class TTSResponse(BaseModel):
-    audio_base64: str
-    sample_rate: int
-
-
-# Create FastAPI app
-fastapi_app = FastAPI(title="Tortoise TTS API")
-
-# List of built-in voices in Tortoise TTS - Focus on the most reliable ones
 RELIABLE_VOICES = [
     "william",
     "train_daws",
@@ -146,6 +120,32 @@ RELIABLE_VOICES = [
     "lj",
     "daniel",
 ]
+DEFAULT_VOICE = "tom"
+# Input model for the API
+class TTSRequest(BaseModel):
+    text: str
+    voice: str = "tom"  # Default voice
+    preset: str = "ultra_fast"  # Options: ultra_fast, fast, standard, high_quality
+    num_autoregressive_samples: int = 50
+    seed: Optional[int] = None
+    temperature: float = 0.8
+    length_penalty: float = 1
+    repetition_penalty: float = 2
+    top_p: float = 0.8
+    max_mel_tokens: int = 500
+
+
+# Output model for the API
+class TTSResponse(BaseModel):
+    audio_base64: str
+    sample_rate: int
+
+
+# Create FastAPI app
+fastapi_app = FastAPI(title="Tortoise TTS API")
+
+# List of built-in voices in Tortoise TTS - Focus on the most reliable ones
+
 
 
 @app.function(image=image, gpu="L4", volumes={"/model_cache": model_cache_volume})
@@ -178,6 +178,15 @@ def generate_speech(request_dict):
     max_mel_tokens = request.get("max_mel_tokens", 500)
 
     logger.info(f"Using reliable voice '{voice}' instead of random")
+    if voice == "random":
+            selected_voice = DEFAULT_VOICE
+            logger.info(f"Voice was 'random', using default voice: {selected_voice}")
+    elif voice in RELIABLE_VOICES:
+            selected_voice = voice
+            logger.info(f"Using requested voice: {selected_voice}")
+    else:
+            selected_voice = DEFAULT_VOICE
+            logger.warning(f"Requested voice '{voice}' not in reliable voices list. Falling back to default: {selected_voice}")
 
     # Initialize TTS model
     try:
@@ -200,7 +209,7 @@ def generate_speech(request_dict):
     valid_presets = ["ultra_fast", "fast", "standard", "high_quality"]
     if preset not in valid_presets:
         logger.warning(f"Invalid preset '{preset}'. Using 'fast' instead.")
-        preset = "fast"
+        preset = "ultra_fast"
 
     # Generate speech
     try:
