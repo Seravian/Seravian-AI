@@ -2,6 +2,7 @@ from email import utils
 import os
 import io
 import tempfile
+import re
 import base64
 from typing import Dict, List, Optional
 from fastapi.params import Depends
@@ -179,6 +180,13 @@ def generate_speech(request_dict):
     top_p = request.get("top_p", 0.8)
     max_mel_tokens = request.get("max_mel_tokens", 604)
 
+    text = request["text"].strip()
+    text = re.sub(r'[^\w\s\.,!?;:\-\'\"()]', ' ', text)
+    text = ' '.join(text.split())  # Normalize whitespace
+
+    if not text:
+        raise ValueError("Text is empty after preprocessing")
+    
     logger.info(f"Using reliable voice '{voice}' instead of random")
     if voice == "random":
         selected_voice = DEFAULT_VOICE
@@ -242,7 +250,7 @@ def generate_speech(request_dict):
 
         # IMPORTANT: When using load_voice(), let Tortoise handle the conditioning internally
         tts_args = {
-            "text": request["text"],
+            "text": text,
             "voice_samples": voice_samples,
             "conditioning_latents": conditioning_latents,  # This is important!
             "preset": preset,
@@ -254,9 +262,14 @@ def generate_speech(request_dict):
             "max_mel_tokens": max_mel_tokens,
             "use_deterministic_seed": seed is not None,
         }
-
+        
+       
         # Generate speech
         logger.info("Calling tts.tts_with_preset() with proper arguments")
+
+        # Clear CUDA cache before generation
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         gen_result = tts.tts_with_preset(**tts_args)
         logger.info(f"tensor shape after gen result: {gen_result.shape}")
