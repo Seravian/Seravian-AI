@@ -129,13 +129,13 @@ class TTSRequest(BaseModel):
     text: str
     voice: str = "tom"  # Default voice
     preset: str = "ultra_fast"  # Options: ultra_fast, fast, standard, high_quality
-    num_autoregressive_samples: int = 50
+    num_autoregressive_samples: int = 64
     seed: Optional[int] = None
     temperature: float = 0.8
     length_penalty: float = 1
     repetition_penalty: float = 2
     top_p: float = 0.8
-    max_mel_tokens: int = 500
+    max_mel_tokens: int = 604
 
 
 # Output model for the API
@@ -173,11 +173,11 @@ def generate_speech(request_dict):
     preset = request.get("preset", "ultra_fast")
     seed = request.get("seed", None)
     temperature = request.get("temperature", 0.8)
-    num_autoregressive_samples = request.get("num_autoregressive_samples", 50)
+    num_autoregressive_samples = request.get("num_autoregressive_samples", 64)
     length_penalty = request.get("length_penalty", 1.0)
     repetition_penalty = request.get("repetition_penalty", 2.0)
     top_p = request.get("top_p", 0.8)
-    max_mel_tokens = request.get("max_mel_tokens", 750)
+    max_mel_tokens = request.get("max_mel_tokens", 604)
 
     logger.info(f"Using reliable voice '{voice}' instead of random")
     if voice == "random":
@@ -282,7 +282,7 @@ def generate_speech(request_dict):
             logger.info(f"Tensor shape after processing for save: {gen_result.shape}")
 
             # Now save the properly shaped tensor
-            torchaudio.save(temp_file.name, gen_result, 24000,bits_per_sample=16)
+            torchaudio.save(temp_file.name, gen_result, 24000,bits_per_sample=16,encoding="PCM_S")
 
             # Read and encode
             with open(temp_file.name, "rb") as audio_file:
