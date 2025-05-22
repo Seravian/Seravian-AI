@@ -34,18 +34,19 @@ def get_api_key(
 ):
     # Check if the environment variable exists before comparing
     expected_api_key = os.environ.get("TORTOISE_TTS_API_KEY")
-    
+
     # If the env var isn't set, log a warning and allow the request (for development)
     if expected_api_key is None:
-        logging.warning("TORTOISE_TTS_API_KEY environment variable is not set. API key validation is disabled.")
+        logging.warning(
+            "TORTOISE_TTS_API_KEY environment variable is not set. API key validation is disabled."
+        )
         return api_key
-    
+
     # Otherwise, validate the API key
     if api_key != expected_api_key:
         raise HTTPException(status_code=403, detail="Forbidden")
-    
-    return api_key
 
+    return api_key
 
 
 # Create volume for model caching
@@ -121,6 +122,8 @@ RELIABLE_VOICES = [
     "daniel",
 ]
 DEFAULT_VOICE = "tom"
+
+
 # Input model for the API
 class TTSRequest(BaseModel):
     text: str
@@ -145,7 +148,6 @@ class TTSResponse(BaseModel):
 fastapi_app = FastAPI(title="Tortoise TTS API")
 
 # List of built-in voices in Tortoise TTS - Focus on the most reliable ones
-
 
 
 @app.function(image=image, gpu="L4", volumes={"/model_cache": model_cache_volume})
@@ -179,14 +181,16 @@ def generate_speech(request_dict):
 
     logger.info(f"Using reliable voice '{voice}' instead of random")
     if voice == "random":
-            selected_voice = DEFAULT_VOICE
-            logger.info(f"Voice was 'random', using default voice: {selected_voice}")
+        selected_voice = DEFAULT_VOICE
+        logger.info(f"Voice was 'random', using default voice: {selected_voice}")
     elif voice in RELIABLE_VOICES:
-            selected_voice = voice
-            logger.info(f"Using requested voice: {selected_voice}")
+        selected_voice = voice
+        logger.info(f"Using requested voice: {selected_voice}")
     else:
-            selected_voice = DEFAULT_VOICE
-            logger.warning(f"Requested voice '{voice}' not in reliable voices list. Falling back to default: {selected_voice}")
+        selected_voice = DEFAULT_VOICE
+        logger.warning(
+            f"Requested voice '{voice}' not in reliable voices list. Falling back to default: {selected_voice}"
+        )
 
     # Initialize TTS model
     try:
@@ -279,7 +283,7 @@ def generate_speech(request_dict):
             logger.info(f"Tensor shape after processing for save: {gen_result.shape}")
 
             # Now save the properly shaped tensor
-            torchaudio.save(temp_file.name, gen_result, 24000)
+            torchaudio.save(temp_file.name, gen_result, 24000, bits_per_sample=16)
 
             # Read and encode
             with open(temp_file.name, "rb") as audio_file:
