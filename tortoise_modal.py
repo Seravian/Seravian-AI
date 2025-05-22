@@ -177,7 +177,7 @@ def generate_speech(request_dict):
     length_penalty = request.get("length_penalty", 1.0)
     repetition_penalty = request.get("repetition_penalty", 2.0)
     top_p = request.get("top_p", 0.8)
-    max_mel_tokens = request.get("max_mel_tokens", 500)
+    max_mel_tokens = request.get("max_mel_tokens", 750)
 
     logger.info(f"Using reliable voice '{voice}' instead of random")
     if voice == "random":
@@ -212,7 +212,7 @@ def generate_speech(request_dict):
     # Validate preset
     valid_presets = ["ultra_fast", "fast", "standard", "high_quality"]
     if preset not in valid_presets:
-        logger.warning(f"Invalid preset '{preset}'. Using 'fast' instead.")
+        logger.warning(f"Invalid preset '{preset}'. Using 'ultra_fast' instead.")
         preset = "ultra_fast"
 
     # Generate speech
@@ -267,7 +267,6 @@ def generate_speech(request_dict):
         logger.info(f"Speech generation successful, tensor shape: {gen_result.shape}")
 
         # Convert to WAV format
-        # Convert to WAV format
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as temp_file:
             # Handle tensor dimensions - we need to convert to 2D for torchaudio.save
             logger.info(f"Tensor shape before processing: {gen_result.shape}")
@@ -283,7 +282,7 @@ def generate_speech(request_dict):
             logger.info(f"Tensor shape after processing for save: {gen_result.shape}")
 
             # Now save the properly shaped tensor
-            torchaudio.save(temp_file.name, gen_result, 24000, bits_per_sample=16)
+            torchaudio.save(temp_file.name, gen_result, 24000,bits_per_sample=16)
 
             # Read and encode
             with open(temp_file.name, "rb") as audio_file:
