@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 import modal
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from fastapi import Depends, FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import Depends, FastAPI, File, Form, Response, UploadFile, HTTPException
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 import os
 import datetime
@@ -546,7 +546,7 @@ def seravian_llm():
             response = delete_history_v2.remote(
                 request.chat_id,
             )
-            return ChatResponse(response=response)
+            return Response(status_code=204)
 
         except (FileNotFoundError, PermissionError) as e:
 
