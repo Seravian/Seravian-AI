@@ -14,7 +14,7 @@ class ChatRequest(BaseModel):
 
 
 class ChatRequestVersion2(BaseModel):
-    message_id: int
+    message_id: int = Field(..., alias="messageId")
     message: str
     chat_id: str = Field(..., alias="chatId")
 
