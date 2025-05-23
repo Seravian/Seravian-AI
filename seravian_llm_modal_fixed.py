@@ -249,7 +249,7 @@ def seravian_llm():
 
         try:
             response = generate_response_version2.remote(
-                request.message, request.chat_id
+                request.message, request.chat_id, request.message_id
             )
             return ChatResponse(response=response)
         except Exception as e:
