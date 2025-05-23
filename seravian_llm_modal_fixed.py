@@ -279,9 +279,9 @@ def edit_history_message_v2(
                     conversation_history: list[dict] = []
 
         except:
-            raise HTTPException(status_code=404, detail="Chat history not found")
+            raise FileNotFoundError("Chat history file not found: " + chat_id)
     else:
-        raise HTTPException(status_code=404, detail="Chat history not found")
+        raise FileNotFoundError("Chat history file not found: " + chat_id)
 
     for i, message in enumerate(conversation_history):
 
@@ -475,8 +475,11 @@ def seravian_llm():
                 request.chat_id,
             )
             return ChatResponse(response=response)
-        except HTTPException as e:
-            raise
+
+        except FileNotFoundError as e:
+
+            raise HTTPException(status_code=404, detail=str(e))
+
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error generating response: {str(e)}"
