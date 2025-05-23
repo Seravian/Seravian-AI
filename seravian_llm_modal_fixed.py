@@ -543,7 +543,9 @@ def seravian_llm():
     @fastapi_app.post("/delete-history-v2", status_code=204)
     async def chat(request: DeleteChatRequestVersion2):
         try:
-            response = delete_history_v2.remote(request.chat_id)
+            response = delete_history_v2.remote(
+                request.chat_id,
+            )
             return ChatResponse(response=response)
 
         except (FileNotFoundError, PermissionError) as e:
