@@ -22,6 +22,16 @@ class ChatRequestVersion2(BaseModel):
         validate_by_name = True  # Enables
 
 
+class EditHistoryMessageRequestVersion2(BaseModel):
+    old_message_id: int = Field(..., alias="oldMessageId")
+    new_message_id: int = Field(..., alias="newMessageId")
+    new_message: str = Field(..., alias="newMessage")
+    chat_id: str = Field(..., alias="chatId")
+
+    class Config:
+        validate_by_name = True  # Enables
+
+
 class ChatDiagnosisRequest(BaseModel):
     message: str
     chat_id: str = Field(..., alias="chatId")
@@ -191,7 +201,96 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
         conversation_history: list[dict] = []
 
     conversation_history.append(
-        {"role": "user", "content": message, "message_id": message_id}
+        {"role": "user", "content": message, "messageId": message_id}
+    )
+
+    # endregion
+
+    # Format history for the model
+    chat_input = (
+        "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        + "assistant:"
+    )
+
+    # Tokenize and generate response
+    inputs = tokenizer(chat_input, return_tensors="pt", truncation=True).to("cuda")
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=200,
+        temperature=0.7,  # Randomness
+        top_p=0.9,  # Nucleus sampling
+        repetition_penalty=1.2,  # Penalize repetition
+    )
+    response: str = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+    # Extract assistant's response
+    assistant_response = response.split("assistant:")[-1].strip()
+
+    # Clear memory
+    del model
+    del tokenizer
+    torch.cuda.empty_cache()
+
+    conversation_history.append({"role": "assistant", "content": assistant_response})
+
+    # Step 3: Write updated list back to the file
+
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(conversation_history, f, indent=4, ensure_ascii=False)
+
+    return assistant_response
+
+
+@app.function(
+    image=image,
+    gpu="A100",
+    timeout=600,
+    volumes={model_path: model_cache_volume, chat_history_path: chat_history_volume},
+)
+def edit_history_message_v2(
+    old_message_id: int, new_message_id: int, new_message: str, chat_id: str
+):
+    """
+    Generate a response based on the conversation history and user message.
+    """
+
+    # Load tokenizer and model from volume
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        device_map="auto",
+        # offload_folder="offload",
+        # quantization_config=quantisation_config
+    )
+    model.eval()
+
+    # region load history from local volume by chat_id as the filename.txt and create file if it doesn't exist
+    # each line of file should be user: messageplaceholder or ai: responseplaceholder
+
+    filename = f"{chat_history_path}/{chat_id}.json"
+
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                try:
+                    conversation_history: list[dict] = json.load(f)
+
+                except json.JSONDecodeError:
+                    conversation_history: list[dict] = []
+
+        except:
+            raise HTTPException(status_code=404, detail="Chat history not found")
+    else:
+        raise HTTPException(status_code=404, detail="Chat history not found")
+
+    for i, message in enumerate(conversation_history):
+
+        if message.get("messageId") == old_message_id:
+            conversation_history = conversation_history[:i]
+            break
+
+    conversation_history.append(
+        {"role": "user", "content": new_message, "messageId": new_message_id}
     )
 
     # endregion
@@ -358,6 +457,22 @@ def seravian_llm():
         try:
             response = generate_response_version2.remote(
                 request.message, request.message_id, request.chat_id
+            )
+            return ChatResponse(response=response)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error generating response: {str(e)}"
+            )
+
+    @fastapi_app.post("/edit-history-message-v2", response_model=ChatResponse)
+    async def chat(request: EditHistoryMessageRequestVersion2):
+
+        try:
+            response = edit_history_message_v2.remote(
+                request.old_message_id,
+                request.new_message_id,
+                request.new_message,
+                request.chat_id,
             )
             return ChatResponse(response=response)
         except Exception as e:
