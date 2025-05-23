@@ -475,6 +475,8 @@ def seravian_llm():
                 request.chat_id,
             )
             return ChatResponse(response=response)
+        except HTTPException as e:
+            raise
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error generating response: {str(e)}"
