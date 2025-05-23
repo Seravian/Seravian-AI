@@ -22,6 +22,14 @@ class ChatRequestVersion2(BaseModel):
         validate_by_name = True  # Enables
 
 
+class ChatDiagnosisRequest(BaseModel):
+    message: str
+    chat_id: str = Field(..., alias="chatId")
+
+    class Config:
+        validate_by_name = True  # Enables
+
+
 class ChatResponse(BaseModel):
     response: str
 
@@ -386,7 +394,7 @@ def diagnosis_api():
 
     @fastapi_app.post("/get-diagnosis", response_model=ChatResponse)
     async def get_diagnosis(
-        request: ChatRequestVersion2, api_key: str = Depends(get_api_key)
+        request: ChatDiagnosisRequest, api_key: str = Depends(get_api_key)
     ):
         try:
             response = generate_diagnosis.remote(request.message, request.chat_id)
