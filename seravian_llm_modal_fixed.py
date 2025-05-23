@@ -22,6 +22,13 @@ class ChatRequestVersion2(BaseModel):
         validate_by_name = True  # Enables
 
 
+class DeleteChatRequestVersion2(BaseModel):
+    chat_id: str = Field(..., alias="chatId")
+
+    class Config:
+        validate_by_name = True  # Enables
+
+
 class EditHistoryMessageRequestVersion2(BaseModel):
     old_message_id: int = Field(..., alias="oldMessageId")
     new_message_id: int = Field(..., alias="newMessageId")
@@ -234,9 +241,14 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
     conversation_history.append({"role": "assistant", "content": assistant_response})
 
     # Step 3: Write updated list back to the file
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(conversation_history, f, indent=4, ensure_ascii=False)
+    except PermissionError:
+        raise PermissionError(f"Permission denied while writing file: {chat_id}")
 
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(conversation_history, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        raise OSError(f"Error writing file {chat_id}: {str(e)}")
 
     return assistant_response
 
@@ -277,9 +289,12 @@ def edit_history_message_v2(
 
                 except json.JSONDecodeError:
                     conversation_history: list[dict] = []
-
-        except:
+        except PermissionError:
+            raise PermissionError(f"Chat history file is locked or in use: {chat_id}")
+        except FileNotFoundError:
             raise FileNotFoundError("Chat history file not found: " + chat_id)
+        except Exception as e:
+            raise OSError(f"Unexpected error accessing file {chat_id}: {str(e)}")
     else:
         raise FileNotFoundError("Chat history file not found: " + chat_id)
 
@@ -323,11 +338,47 @@ def edit_history_message_v2(
     conversation_history.append({"role": "assistant", "content": assistant_response})
 
     # Step 3: Write updated list back to the file
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(conversation_history, f, indent=4, ensure_ascii=False)
 
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(conversation_history, f, indent=4, ensure_ascii=False)
+    except PermissionError:
+        raise PermissionError(f"Permission denied while writing file: {chat_id}")
+
+    except Exception as e:
+        raise OSError(f"Error writing file {chat_id}: {str(e)}")
 
     return assistant_response
+
+
+@app.function(
+    image=image,
+    gpu="A100",
+    timeout=600,
+    volumes={model_path: model_cache_volume, chat_history_path: chat_history_volume},
+)
+def delete_history_v2(chat_id: str):
+
+    filename = f"{chat_history_path}/{chat_id}.json"
+
+    if os.path.exists(filename):
+        try:
+            os.remove(filename)
+        except FileNotFoundError:
+            # File was deleted by something else between exists() and remove()
+            raise FileNotFoundError(
+                f"Chat history file '{chat_id}' was already deleted."
+            )
+        except PermissionError as e:
+            raise PermissionError(
+                f"Chat history file '{chat_id}' is locked or in use: {e}"
+            )
+        except Exception as e:
+            raise OSError(f"Unexpected error accessing file {chat_id}: {str(e)}")
+        except Exception as e:
+            raise OSError(f"Error deleting file '{chat_id}': {e}")
+    else:
+        raise FileNotFoundError(f"Chat history file not found: {chat_id}")
 
 
 @app.function(
@@ -459,6 +510,10 @@ def seravian_llm():
                 request.message, request.message_id, request.chat_id
             )
             return ChatResponse(response=response)
+
+        except PermissionError as e:
+
+            raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error generating response: {str(e)}"
@@ -476,7 +531,22 @@ def seravian_llm():
             )
             return ChatResponse(response=response)
 
-        except FileNotFoundError as e:
+        except (FileNotFoundError, PermissionError) as e:
+
+            raise HTTPException(status_code=404, detail=str(e))
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Error generating response: {str(e)}"
+            )
+
+    @fastapi_app.post("/delete-history-v2", status_code=204)
+    async def chat(request: DeleteChatRequestVersion2):
+        try:
+            response = delete_history_v2.remote(request.chat_id)
+            return ChatResponse(response=response)
+
+        except (FileNotFoundError, PermissionError) as e:
 
             raise HTTPException(status_code=404, detail=str(e))
 
