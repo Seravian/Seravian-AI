@@ -14,6 +14,7 @@ class ChatRequest(BaseModel):
 
 
 class ChatRequestVersion2(BaseModel):
+    message_id: int
     message: str
     chat_id: str = Field(..., alias="chatId")
 
@@ -88,7 +89,6 @@ def load_model():
         print("Model downloaded and saved to volume successfully!")
     else:
         print("Model already cached in volume")
-
 
 
 # Function to generate response
@@ -182,8 +182,10 @@ def generate_response_version2(message: str, chat_id: str):
     # endregion
 
     # Format history for the model
-    chat_input = "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history) + "assistant:"
-
+    chat_input = (
+        "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        + "assistant:"
+    )
 
     # Tokenize and generate response
     inputs = tokenizer(chat_input, return_tensors="pt", truncation=True).to("cuda")
