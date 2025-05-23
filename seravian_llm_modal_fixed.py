@@ -147,7 +147,7 @@ def generate_response(conversation_history):
     timeout=600,
     volumes={model_path: model_cache_volume, chat_history_path: chat_history_volume},
 )
-def generate_response_version2(message: str, chat_id: str):
+def generate_response_version2(message: str, message_id: int, chat_id: str):
     """
     Generate a response based on the conversation history and user message.
     """
@@ -177,7 +177,9 @@ def generate_response_version2(message: str, chat_id: str):
     else:
         conversation_history: list[dict] = []
 
-    conversation_history.append({"role": "user", "content": message})
+    conversation_history.append(
+        {"role": "user", "content": message, "message_id": message_id}
+    )
 
     # endregion
 
@@ -249,7 +251,7 @@ def seravian_llm():
 
         try:
             response = generate_response_version2.remote(
-                request.message, request.chat_id, request.message_id
+                request.message, request.message_id, request.chat_id
             )
             return ChatResponse(response=response)
         except Exception as e:
