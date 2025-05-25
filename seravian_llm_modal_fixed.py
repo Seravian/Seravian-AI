@@ -116,6 +116,7 @@ def load_model():
             # offload_folder="offload",
         )
         model.save_pretrained(model_path)
+        model_cache_volume.commit()
         print("Model downloaded and saved to volume successfully!")
     else:
         print("Model already cached in volume")
@@ -135,7 +136,7 @@ def generate_response(conversation_history):
 
     # Load tokenizer and model from volume
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(
+    model = load_model(
         model_path,
         device_map="auto",
         # offload_folder="offload",
