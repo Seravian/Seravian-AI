@@ -149,7 +149,7 @@ def generate_response(conversation_history):
 
     # Format history for the model
     chat_input = (
-        system_prompt+ "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        system_prompt + "\n\n" + "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
         + "assistant:"
     )
 
@@ -222,7 +222,7 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
 
     # Format history for the model
     chat_input = (
-        system_prompt+ "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        system_prompt + "\n\n" + "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
         + "assistant:"
     )
 
@@ -230,8 +230,8 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
     inputs = tokenizer(chat_input, return_tensors="pt", truncation=True).to("cuda")
     outputs = model.generate(
         **inputs,
-        max_new_tokens=200,
-        temperature=0.7,  # Randomness
+        max_new_tokens=256,
+        temperature=0.6,  # Randomness
         top_p=0.9,  # Nucleus sampling
         repetition_penalty=1.2,  # Penalize repetition
     )
@@ -239,7 +239,10 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
 
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
-
+    for delimeter in ["\nuser:","\nReasoning:","\nExplanation:"]:
+        if delimeter in assistant_response:
+            assistant_response=assistant_response.split(delimeter)[0].strip()
+            break
     # Clear memory
     del model
     del tokenizer
@@ -322,7 +325,7 @@ def edit_history_message_v2(
 
     # Format history for the model
     chat_input = (
-        system_prompt+ "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        system_prompt + "\n\n" + "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
         + "assistant:"
     )
 
@@ -339,7 +342,10 @@ def edit_history_message_v2(
 
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
-
+    for delimeter in ["\nuser:","\nReasoning:","\nExplanation:"]:
+        if delimeter in assistant_response:
+            assistant_response=assistant_response.split(delimeter)[0].strip()
+            break
     # Clear memory
     del model
     del tokenizer
