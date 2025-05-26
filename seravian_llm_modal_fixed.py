@@ -136,7 +136,7 @@ def generate_response(conversation_history):
 
     # Load tokenizer and model from volume
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = load_model(
+    model = AutoModelForCausalLM(
         model_path,
         device_map="auto",
         # offload_folder="offload",
@@ -221,7 +221,7 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
 
     # Format history for the model
     chat_input = (
-        system_prompt+ "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        system_prompt + "\n\n" + "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
         + "assistant:"
     )
 
@@ -238,6 +238,10 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
 
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
+    for delimeter in ["\nuser:","\nReasoning","\nExplanation","\n\n"]:
+        if delimeter in assistant_response:
+            assistant_response=assistant_response.split(delimeter)[0].strip()
+            break
 
     # Clear memory
     del model
@@ -339,6 +343,10 @@ def edit_history_message_v2(
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
 
+    for delimeter in ["\nuser:","\nReasoning","\nExplanation","\n\n"]:
+        if delimeter in assistant_response:
+            assistant_response=assistant_response.split(delimeter)[0].strip()
+            break
     # Clear memory
     del model
     del tokenizer
@@ -455,7 +463,10 @@ def generate_diagnosis(message: str, chat_id: str):
 
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
-
+    for delimeter in ["\nuser:","\nReasoning","\nExplanation","\n\n"]:
+        if delimeter in assistant_response:
+            assistant_response=assistant_response.split(delimeter)[0].strip()
+            break
     # Clear memory
     del model
     del tokenizer
