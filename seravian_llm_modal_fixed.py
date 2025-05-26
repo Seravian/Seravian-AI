@@ -217,11 +217,11 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
     # endregion
 
     # Format history for the model
-    SystemPrompt="You are a helpful, emotionally aware Assistant. Always respond with empathy based on the emotion."
+    system_prompt = "You are a helpful, emotionally aware Assistant. Always respond with empathy based on the emotion. Acknowledge their emotional state briefly if it's relevant, then answer their question clearly and factually. If the user is angry or upset, remain calm and polite, but always answer their question."
 
     # Format history for the model
     chat_input = (
-        SystemPrompt+ "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        system_prompt+ "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
         + "assistant:"
     )
 
@@ -317,11 +317,11 @@ def edit_history_message_v2(
     # endregion
 
     # Format history for the model
-    SystemPrompt="You are a helpful, emotionally aware Assistant. Always respond with empathy based on the emotion."
+    system_prompt = "You are a helpful, emotionally aware Assistant. Always respond with empathy based on the emotion. Acknowledge their emotional state briefly if it's relevant, then answer their question clearly and factually. If the user is angry or upset, remain calm and polite, but always answer their question."
 
     # Format history for the model
     chat_input = (
-        SystemPrompt+ "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        system_prompt+ "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
         + "assistant:"
     )
 
