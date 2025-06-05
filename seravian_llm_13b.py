@@ -516,12 +516,13 @@ def seravian_llm():
     )
 
     # Ensure model is loaded in the volume
-    load_model.remote()
+    
 
     @fastapi_app.post("/v2", response_model=ChatResponse)
     async def chat(request: ChatRequestVersion2):
 
         try:
+            load_model.remote()
             response = generate_response_version2.remote(
                 request.message, request.message_id, request.chat_id
             )
@@ -539,6 +540,7 @@ def seravian_llm():
     async def chat(request: EditHistoryMessageRequestVersion2):
 
         try:
+            load_model.remote()
             response = edit_history_message_v2.remote(
                 request.old_message_id,
                 request.new_message_id,
@@ -578,6 +580,7 @@ def seravian_llm():
         request: ChatDiagnosisRequest, api_key: str = Depends(get_api_key)
     ):
         try:
+            load_model.remote()
             response = generate_diagnosis.remote(request.message, request.chat_id)
             return ChatResponse(response=response)
         except Exception as e:
