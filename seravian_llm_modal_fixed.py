@@ -97,10 +97,10 @@ class ChatDiagnosisResponse(CamelModel):
     chat_id: str
     diagnosis_message_prompt: str
     is_succeeded: bool
-    diagnosed_problem: Optional[str]
-    reasoning: Optional[str]
-    prescription: Optional[list[str]]
-    failure_reason: Optional[str]
+    diagnosed_problem: Optional[str] = None  # Made optional with default None
+    reasoning: Optional[str] = None  # Made optional with default None
+    prescription: Optional[list[str]] = None  # Made optional with default None
+    failure_reason: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -481,247 +481,360 @@ def generate_diagnosis(
     messages: list[ChatDiagnosisMessageEntry],
 ) -> ChatDiagnosisResponse:
     """
-    Generate a response based on the conversation history and user message.
+    Generate a diagnosis based on the conversation history.
     """
 
-    diagnosis_message_prompt = """You are a mental health assistant. Analyze all the messages in this conversation. Determine whether the user may be suffering from any identifiable mental health issues based on the content and tone of the messages.
+    diagnosis_message_prompt = """You are a mental health assistant. Analyze all the messages in this conversation. Determine whether I may be suffering from any identifiable mental health issues based on the content and tone of the messages.
 
-If you identify a problem, return your answer in the following JSON format:
+You MUST respond with ONLY a valid JSON object. Do not include any additional text, explanations, or apologies outside of the JSON.
+
+If you identify a problem, return ONLY this JSON:
 
 {
   "Diagnosed problem": "<Clearly state the mental health issue in no more than 20 words, e.g., Generalized Anxiety Disorder>",
   "Reasoning": "<Explain why you reached this conclusion, based on message patterns or content>",
-  "Activities to help with dealing with this problem": ["<List 2–3 simple, practical suggestions and exercises tailored to the issue>"]
+  "Activities to help with dealing with this problem": ["<List 3 simple, practical suggestions and exercises tailored to the issue>"]
 }
 
-If you cannot confidently identify a problem, return your answer in this fallback JSON format:
+If you cannot confidently identify a problem, return ONLY this JSON:
 
 {
-  "Diagnose failure reason": "<Clearly explain why no diagnosis could be made (e.g., not enough information, unclear patterns) if there are more reasons on why diagnosis couldn't be made state them clearly.>"
+  "Diagnose failure reason": "<Clearly explain why no diagnosis could be made (e.g., not enough information, unclear patterns)>"
 }
 
-IMPORTANT: You must NEVER suggest or prescribe any type of medication. Your role is strictly limited to observational analysis and practical, non-medical suggestions.
+CRITICAL: You must NEVER suggest or prescribe any type of medication. Your role is strictly limited to observational analysis and practical, non-medical suggestions.
 
-Only output one of these two JSON objects, and nothing else."""
-    # Load tokenizer and model from volume
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        device_map="auto",
-        # offload_folder="offload",
-        # quantization_config=quantisation_config
-    )
-    model.eval()
-
-    # region load history from local volume by chat_id as the filename.txt and create file if it doesn't exist
-    # each line of file should be user: messageplaceholder or ai: responseplaceholder
-
-    diagnosis_filename = f"{diagnosis_path}/{chat_id}.json"
-
-    conversation_history: list[dict] = [
-        {
-            "role": "assistant" if message_entry.is_ai else "user",
-            "content": message_entry.content,
-        }
-        for message_entry in messages
-    ]
-    conversation_context = list(conversation_history)
-    conversation_history.append({"role": "user", "content": diagnosis_message_prompt})
-    # endregion
-
-    # Format history for the model
-    chat_input = (
-        "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
-        + "assistant:"
-    )
-
-    # Tokenize and generate response
-    inputs = tokenizer(chat_input, return_tensors="pt", truncation=True).to("cuda")
-    outputs = model.generate(
-        **inputs,
-        max_new_tokens=200,
-        temperature=0.7,  # Randomness
-        top_p=0.9,  # Nucleus sampling
-        repetition_penalty=1.2,  # Penalize repetition
-    )
-    response: str = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-    # Extract assistant's response
-    assistant_response = response.split("assistant:")[-1].strip()
-
-    response_parts = assistant_response.split(",", maxsplit=1)
-
-    if len(response_parts) != 2:
-        # handle when the model fails to generate a response  don't start with {True or False },
-        # log that the model generated a response that doesn't match the expected format that don't have one comma
-        logger.error(
-            f"Model generated a response that doesn't have one comma",
-            extra={
-                "chat_id": chat_id,
-                "diagnosis_id": chat_diagnosis_id,
-                "response": response,
-            },
-        )
-        raise Exception(
-            f"Model generated a response that doesn't have one comma at `boolean, response` : {response}"
-        )
-
-    string_status = response_parts[0].strip()  # "False"
-    response_part = response_parts[1].strip()  # The JSON string
-    if string_status.lower() != "true" and string_status.lower() != "false":
-        # handle when the model fails to generate a response the  part before the comma is not True or False
-        logger.error(
-            f"Model generated a response that have one comma atleast but the part before the comma is not True or False",
-            extra={
-                "chat_id": chat_id,
-                "diagnosis_id": chat_diagnosis_id,
-                "response": response,
-            },
-        )
-        raise Exception(
-            f"Model generated a response that have one comma atleast but the part before the comma is not True or False : {response}"
-        )
+Output ONLY the JSON object, nothing else."""
 
     try:
-        response_json_data: dict = json.loads(response_part)
-    except json.JSONDecodeError:
-        # handle when the model fails to generate a response the  part after the comma is not valid json
-        logger.error(
-            f"Model generated a response that the part after the comma is not valid json format",
+        # Load tokenizer and model from volume
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_path,
+            device_map="auto",
+        )
+        model.eval()
+
+        diagnosis_filename = f"{diagnosis_path}/{chat_id}.json"
+
+        conversation_history: list[dict] = [
+            {
+                "role": "assistant" if message_entry.is_ai else "user",
+                "content": message_entry.content,
+            }
+            for message_entry in messages
+        ]
+        conversation_context = list(conversation_history)
+        conversation_history.append({"role": "user", "content": diagnosis_message_prompt})
+
+        # Format history for the model
+        chat_input = (
+            "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+            + "assistant:"
+        )
+
+        # Tokenize and generate response
+        inputs = tokenizer(chat_input, return_tensors="pt", truncation=True).to("cuda")
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=500,  # Significantly increased to ensure complete JSON
+            temperature=0.2,  # Even lower temperature for more consistent JSON
+            top_p=0.8,
+            repetition_penalty=1.1,
+            do_sample=True,
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+        response: str = tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        # Extract assistant's response
+        assistant_response = response.split("assistant:")[-1].strip()
+
+        # Clear memory first to free up resources
+        del model
+        del tokenizer
+        torch.cuda.empty_cache()
+
+        # Enhanced JSON extraction and cleaning
+        json_response = assistant_response.strip()
+        
+        # Log the raw response for debugging
+        logger.info(
+            f"Raw model response for diagnosis",
             extra={
                 "chat_id": chat_id,
                 "diagnosis_id": chat_diagnosis_id,
-                "response": response,
+                "raw_response": json_response,  # Log full response for debugging
+                "response_length": len(json_response),
             },
         )
-        raise Exception(
-            f"Model generated a response that the part after the comma is not valid json format : {response}"
+        
+        # More aggressive JSON cleaning and extraction
+        if "{" in json_response:
+            start_idx = json_response.find("{")
+            json_response = json_response[start_idx:]
+            
+            # Handle potential issues with incomplete JSON
+            # Check if we have proper structure
+            if json_response.count('"') % 2 != 0:
+                # Odd number of quotes - likely truncated
+                logger.warning(f"Detected odd number of quotes, attempting to fix")
+                # Try to complete the JSON structure
+                if not json_response.endswith('"'):
+                    json_response += '"'
+                
+                # Check if we need closing braces/brackets
+                open_braces = json_response.count("{")
+                close_braces = json_response.count("}")
+                open_brackets = json_response.count("[")
+                close_brackets = json_response.count("]")
+                
+                # Add missing closing characters
+                if open_brackets > close_brackets:
+                    json_response += "]" * (open_brackets - close_brackets)
+                if open_braces > close_braces:
+                    json_response += "}" * (open_braces - close_braces)
+            
+        # Clean up common formatting issues
+        json_response = json_response.replace('"', '"').replace('"', '"')
+        json_response = json_response.replace(''', "'").replace(''', "'")
+        
+        # Additional cleaning for potential line breaks or formatting issues
+        json_response = json_response.strip()
+        
+        # Parse the JSON response with multiple attempts
+        response_json_data = None
+        parsing_attempts = []
+        
+        # Attempt 1: Direct parsing
+        try:
+            response_json_data = json.loads(json_response)
+            logger.info(f"JSON parsed successfully on first attempt")
+        except json.JSONDecodeError as e:
+            parsing_attempts.append(f"Direct parse failed: {str(e)}")
+            
+            # Attempt 2: Try to fix common issues
+            try:
+                # Fix potential issues with escaped characters
+                fixed_response = json_response.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                response_json_data = json.loads(fixed_response)
+                logger.info(f"JSON parsed successfully after escape character fix")
+            except json.JSONDecodeError as e2:
+                parsing_attempts.append(f"Escape fix failed: {str(e2)}")
+                
+                # Attempt 3: Try with regex to extract valid JSON parts
+                try:
+                    import re
+                    # Look for complete key-value pairs
+                    json_pattern = r'{\s*"[^"]*"\s*:\s*"[^"]*"(?:\s*,\s*"[^"]*"\s*:\s*(?:"[^"]*"|\[[^\]]*\]))*\s*}'
+                    matches = re.search(json_pattern, json_response, re.DOTALL)
+                    if matches:
+                        clean_json = matches.group(0)
+                        response_json_data = json.loads(clean_json)
+                        logger.info(f"JSON parsed successfully using regex extraction")
+                    else:
+                        raise json.JSONDecodeError("No valid JSON pattern found", json_response, 0)
+                except (json.JSONDecodeError, ImportError) as e3:
+                    parsing_attempts.append(f"Regex extraction failed: {str(e3)}")
+                    
+                    # Final attempt: Manual reconstruction for known structure
+                    try:
+                        # Try to manually extract the expected fields
+                        manual_json = {}
+                        
+                        # Look for "Diagnosed problem"
+                        if '"Diagnosed problem"' in json_response:
+                            problem_match = re.search(r'"Diagnosed problem"\s*:\s*"([^"]*)"', json_response)
+                            if problem_match:
+                                manual_json["Diagnosed problem"] = problem_match.group(1)
+                        
+                        # Look for "Reasoning"
+                        if '"Reasoning"' in json_response:
+                            reasoning_match = re.search(r'"Reasoning"\s*:\s*"([^"]*)"', json_response, re.DOTALL)
+                            if reasoning_match:
+                                manual_json["Reasoning"] = reasoning_match.group(1)
+                        
+                        # Look for "Activities" array
+                        if '"Activities to help with dealing with this problem"' in json_response:
+                            activities_match = re.search(r'"Activities to help with dealing with this problem"\s*:\s*\[([^\]]*)\]', json_response, re.DOTALL)
+                            if activities_match:
+                                activities_str = activities_match.group(1)
+                                # Extract individual activities
+                                activity_items = re.findall(r'"([^"]*)"', activities_str)
+                                manual_json["Activities to help with dealing with this problem"] = activity_items
+                        
+                        # Look for failure reason
+                        if '"Diagnose failure reason"' in json_response:
+                            failure_match = re.search(r'"Diagnose failure reason"\s*:\s*"([^"]*)"', json_response, re.DOTALL)
+                            if failure_match:
+                                manual_json["Diagnose failure reason"] = failure_match.group(1)
+                        
+                        if manual_json:
+                            response_json_data = manual_json
+                            logger.info(f"JSON reconstructed manually with keys: {list(manual_json.keys())}")
+                        else:
+                            raise ValueError("Manual reconstruction failed")
+                            
+                    except Exception as e4:
+                        parsing_attempts.append(f"Manual reconstruction failed: {str(e4)}")
+        
+        # If all parsing attempts failed
+        if response_json_data is None:
+            logger.error(
+                f"All JSON parsing attempts failed",
+                extra={
+                    "chat_id": chat_id,
+                    "diagnosis_id": chat_diagnosis_id,
+                    "response": json_response,
+                    "attempts": parsing_attempts,
+                },
+            )
+            return ChatDiagnosisResponse(
+                chat_id=chat_id,
+                diagnosis_message_prompt=diagnosis_message_prompt,
+                is_succeeded=False,
+                failure_reason=json_response
+            )
+        
+        logger.info(
+            f"Successfully parsed JSON for diagnosis",
+            extra={
+                "chat_id": chat_id,
+                "diagnosis_id": chat_diagnosis_id,
+                "parsed_keys": list(response_json_data.keys()),
+            },
         )
 
-    if string_status.lower() == "True":
-        # check if the response part match the provided provided JSON format when diagnosis is successful
-        if (
-            "Diagnosed problem" in response_json_data
-            and "Reasoning" in response_json_data
-            and "Activities to help with dealing with this problem"
-            in response_json_data
-            and len(response_json_data) == 3
-        ):
-            # check that each is not None and not whitespace and list is not None and not empty and also its items are not None and not whitespace
-            # and the value of "Activities to help with dealing with this problem"  is list of str
-            if (
-                response_json_data["Diagnosed problem"]
-                and response_json_data["Reasoning"]
-                and response_json_data["Diagnosed problem"].strip()
-                and response_json_data["Reasoning"].strip()
-                and isinstance(
-                    response_json_data[
-                        "Activities to help with dealing with this problem"
-                    ],
-                    list,
-                )
-                and response_json_data[
-                    "Activities to help with dealing with this problem"
-                ]
-                and not all(
-                    isinstance(item, str) and item and item.strip()
-                    for item in response_json_data[
-                        "Activities to help with dealing with this problem"
-                    ]
-                )
-            ):
-
-                # return the response
-                return ChatDiagnosisResponse(
-                    chat_id=chat_id,
-                    diagnosis_message_prompt=diagnosis_message_prompt,
-                    is_succeeded=True,
-                    diagnosed_problem=response_json_data["Diagnosed problem"],
-                    reasoning=response_json_data["Reasoning"],
-                    prescription=response_json_data[
-                        "Activities to help with dealing with this problem"
-                    ],
-                    failure_reason=None,
-                )
-            else:
-                logger.error(
-                    "Model generated a response that doesn't match the provided provided JSON format when diagnosis is successful",
-                    extra={
-                        "chat_id": chat_id,
-                        "diagnosis_id": chat_diagnosis_id,
-                        "response": response,
-                    },
-                )
-                raise Exception(
-                    "Model generated a response that doesn't match the provided provided JSON format when diagnosis is successful"
-                )
-    else:
-        # check if the response part match the provided provided JSON format when diagnosis is failed
-        if (
-            "Diagnose failure reason" in response_json_data
-            and len(response_json_data) == 1
-        ):
-            if (
-                response_json_data["Diagnose failure reason"]
-                and response_json_data["Diagnosed problem"].strip()
-            ):
+        # Validate and process successful diagnosis
+        if all(key in response_json_data for key in ["Diagnosed problem", "Reasoning", "Activities to help with dealing with this problem"]):
+            diagnosed_problem = response_json_data.get("Diagnosed problem", "").strip()
+            reasoning = response_json_data.get("Reasoning", "").strip()
+            activities = response_json_data.get("Activities to help with dealing with this problem", [])
+            
+            # Validate the data
+            if not diagnosed_problem:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
-                    diagnosed_problem=None,
-                    reasoning=None,
-                    prescription=None,
-                    failure_reason=response_json_data["Diagnose failure reason"],
+                    failure_reason="No Diagnosed Problem."
                 )
-            else:
-                logger.error(
-                    "Model generated a response that doesn't match the provided provided JSON format when diagnosis is failed",
-                    extra={
-                        "chat_id": chat_id,
-                        "diagnosis_id": chat_diagnosis_id,
-                        "response": response,
-                    },
+            
+            if not reasoning:
+                return ChatDiagnosisResponse(
+                    chat_id=chat_id,
+                    diagnosis_message_prompt=diagnosis_message_prompt,
+                    is_succeeded=False,
+                    failure_reason="No Reasoning Found."
                 )
-                raise Exception(
-                    "Model generated a response that doesn't match the provided provided JSON format when diagnosis is failed"
+            
+            if not isinstance(activities, list) or not activities:
+                return ChatDiagnosisResponse(
+                    chat_id=chat_id,
+                    diagnosis_message_prompt=diagnosis_message_prompt,
+                    is_succeeded=False,
+                    failure_reason="No Activities  or excercises could be prescribed."
+                )
+            
+            # Ensure all activities are valid strings
+            valid_activities = [str(activity).strip() for activity in activities if str(activity).strip()]
+            if not valid_activities:
+                return ChatDiagnosisResponse(
+                    chat_id=chat_id,
+                    diagnosis_message_prompt=diagnosis_message_prompt,
+                    is_succeeded=False,
+                    failure_reason="No Activities  or excercises could be prescribed."
                 )
 
-    # Clear memory
-    del model
-    del tokenizer
-    torch.cuda.empty_cache()
+            # Save successful diagnosis
+            diagnosis_entry = {
+                "chat_id": chat_id,
+                "timestamp": datetime.datetime.now().isoformat(),
+                "diagnosis_message_prompt": diagnosis_message_prompt,
+                "diagnosis_response": assistant_response,
+                "conversation_context": conversation_context,
+            }
 
-    diagnosis_entry = {
-        "chat_id": chat_id,
-        "timestamp": datetime.datetime.now().isoformat(),
-        "diagnosis_message_prompt": diagnosis_message_prompt,
-        "diagnosis_response": assistant_response,
-        "conversation_context": conversation_context,  # Original chat history without diagnosis interaction
-    }
-
-    # Load existing diagnoses for this chat_id if they exist
-    if os.path.exists(diagnosis_filename):
-        with open(diagnosis_filename, "r", encoding="utf-8") as f:
             try:
-                diagnoses_history = json.load(f)
-                if not isinstance(diagnoses_history, list):
-                    diagnoses_history = [
-                        diagnoses_history
-                    ]  # Convert old format to list
-            except json.JSONDecodeError:
-                diagnoses_history = []
-    else:
-        diagnoses_history = []
+                if os.path.exists(diagnosis_filename):
+                    with open(diagnosis_filename, "r", encoding="utf-8") as f:
+                        try:
+                            diagnoses_history = json.load(f)
+                            if not isinstance(diagnoses_history, list):
+                                diagnoses_history = [diagnoses_history]
+                        except json.JSONDecodeError:
+                            diagnoses_history = []
+                else:
+                    diagnoses_history = []
 
-    # Add new diagnosis entry
-    diagnoses_history.append(diagnosis_entry)
+                diagnoses_history.append(diagnosis_entry)
 
-    # Save updated diagnoses to diagnosis volume
-    with open(diagnosis_filename, "w", encoding="utf-8") as f:
-        json.dump(diagnoses_history, f, indent=4, ensure_ascii=False)
+                with open(diagnosis_filename, "w", encoding="utf-8") as f:
+                    json.dump(diagnoses_history, f, indent=4, ensure_ascii=False)
+            except Exception as save_error:
+                logger.error(f"Failed to save diagnosis: {save_error}")
 
-    return response_json_data
+            return ChatDiagnosisResponse(
+                chat_id=chat_id,
+                diagnosis_message_prompt=diagnosis_message_prompt,
+                is_succeeded=True,
+                diagnosed_problem=diagnosed_problem,
+                reasoning=reasoning,
+                prescription=valid_activities,
+            )
+
+        # Handle failure case
+        elif "Diagnose failure reason" in response_json_data:
+            failure_reason = response_json_data.get("Diagnose failure reason", "").strip()
+            
+            if not failure_reason:
+                return ChatDiagnosisResponse(
+                    chat_id=chat_id,
+                    diagnosis_message_prompt=diagnosis_message_prompt,
+                    is_succeeded=False,
+                    failure_reason="Failed to provide Failure Reason"
+                )
+            
+            return ChatDiagnosisResponse(
+                chat_id=chat_id,
+                diagnosis_message_prompt=diagnosis_message_prompt,
+                is_succeeded=False,
+                failure_reason=failure_reason,
+            )
+
+        # Handle unexpected format
+        else:
+            logger.error(
+                "Model generated response with unexpected JSON structure",
+                extra={
+                    "chat_id": chat_id,
+                    "diagnosis_id": chat_diagnosis_id,
+                    "response": assistant_response,
+                    "json_keys": list(response_json_data.keys()),
+                },
+            )
+            return ChatDiagnosisResponse(
+                chat_id=chat_id,
+                diagnosis_message_prompt=diagnosis_message_prompt,
+                is_succeeded=False,
+                failure_reason=f"Unexpected Output."
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Error in generate_diagnosis: {str(e)}",
+            extra={
+                "chat_id": chat_id,
+                "diagnosis_id": chat_diagnosis_id,
+                "error": str(e),
+            },
+        )
+        return ChatDiagnosisResponse(
+            chat_id=chat_id,
+            diagnosis_message_prompt=diagnosis_message_prompt,
+            is_succeeded=False,
+            failure_reason=f"Internal error: {str(e)}"
+        )
 
 
 # Define the FastAPI endpoint
