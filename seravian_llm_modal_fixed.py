@@ -10,6 +10,35 @@ from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredenti
 import os
 import datetime
 import time
+from pythonjsonlogger import jsonlogger
+import logging
+
+
+# region logging
+
+LOG_FILE_PATH = "/logs/mentallama7b.json"  # Use Modal volume mount path
+
+# Ensure the logs directory exists (defensive check)
+os.makedirs(os.path.dirname(LOG_FILE_PATH), exist_ok=True)
+
+
+class UTCFormatter(jsonlogger.JsonFormatter):
+    converter = time.gmtime
+
+
+# Persistent model cache volume
+
+log_volume = modal.Volume.from_name("log-volume", create_if_missing=True)
+
+formatter = UTCFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+
+file_handler = logging.FileHandler(LOG_FILE_PATH, mode="a")
+file_handler.setFormatter(formatter)
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+# endregion
 
 # class ChatRequest(BaseModel):
 #     history: List[Dict[str, str]]
@@ -48,6 +77,7 @@ class ChatDiagnosisMessageEntry(BaseModel):
 
 class ChatDiagnosisRequest(BaseModel):
     chat_id: str = Field(..., alias="chatId")
+    chat_diagnosis_id: int = Field(..., alias="chatDiagnosisId")
     messages: List[ChatDiagnosisMessageEntry] = Field(..., alias="messages")
 
     class Config:
@@ -69,7 +99,7 @@ class ChatDiagnosisResponse(CamelModel):
     is_succeeded: bool
     diagnosed_problem: Optional[str]
     reasoning: Optional[str]
-    prescription: Optional[str]
+    prescription: Optional[list[str]]
     failure_reason: Optional[str]
 
 
@@ -105,7 +135,8 @@ image = (
     .pip_install(
         "torch", "transformers", "pydantic", "accelerate", "BitsandBytes"
     )  # Install these first
-    .pip_install("sentencepiece")  # Install separately after build tools
+    .pip_install("sentencepiece")
+    .pip_install("python-json-logger")  # Install separately after build tools
 )
 
 # Create a Modal Stub (this is your app)
@@ -446,6 +477,7 @@ def delete_history_v2(chat_id: str):
 )
 def generate_diagnosis(
     chat_id: str,
+    chat_diagnosis_id: int,
     messages: list[ChatDiagnosisMessageEntry],
 ) -> ChatDiagnosisResponse:
     """
@@ -522,17 +554,49 @@ Only output one of these two JSON objects, and nothing else."""
     if len(response_parts) != 2:
         # handle when the model fails to generate a response  don't start with {True or False },
         # log that the model generated a response that doesn't match the expected format that don't have one comma
-        pass
+        logger.error(
+            f"Model generated a response that doesn't have one comma",
+            extra={
+                "chat_id": chat_id,
+                "diagnosis_id": chat_diagnosis_id,
+                "response": response,
+            },
+        )
+        raise Exception(
+            f"Model generated a response that doesn't have one comma at `boolean, response` : {response}"
+        )
 
     string_status = response_parts[0].strip()  # "False"
     response_part = response_parts[1].strip()  # The JSON string
+    if string_status.lower() != "true" and string_status.lower() != "false":
+        # handle when the model fails to generate a response the  part before the comma is not True or False
+        logger.error(
+            f"Model generated a response that have one comma atleast but the part before the comma is not True or False",
+            extra={
+                "chat_id": chat_id,
+                "diagnosis_id": chat_diagnosis_id,
+                "response": response,
+            },
+        )
+        raise Exception(
+            f"Model generated a response that have one comma atleast but the part before the comma is not True or False : {response}"
+        )
 
     try:
         response_json_data: dict = json.loads(response_part)
     except json.JSONDecodeError:
         # handle when the model fails to generate a response the  part after the comma is not valid json
-        response_json_data = dict()
-        pass
+        logger.error(
+            f"Model generated a response that the part after the comma is not valid json format",
+            extra={
+                "chat_id": chat_id,
+                "diagnosis_id": chat_diagnosis_id,
+                "response": response,
+            },
+        )
+        raise Exception(
+            f"Model generated a response that the part after the comma is not valid json format : {response}"
+        )
 
     if string_status.lower() == "True":
         # check if the response part match the provided provided JSON format when diagnosis is successful
@@ -579,8 +643,19 @@ Only output one of these two JSON objects, and nothing else."""
                     ],
                     failure_reason=None,
                 )
-
-    elif string_status.lower() == "False":
+            else:
+                logger.error(
+                    "Model generated a response that doesn't match the provided provided JSON format when diagnosis is successful",
+                    extra={
+                        "chat_id": chat_id,
+                        "diagnosis_id": chat_diagnosis_id,
+                        "response": response,
+                    },
+                )
+                raise Exception(
+                    "Model generated a response that doesn't match the provided provided JSON format when diagnosis is successful"
+                )
+    else:
         # check if the response part match the provided provided JSON format when diagnosis is failed
         if (
             "Diagnose failure reason" in response_json_data
@@ -599,13 +674,19 @@ Only output one of these two JSON objects, and nothing else."""
                     prescription=None,
                     failure_reason=response_json_data["Diagnose failure reason"],
                 )
-    else:
-        # handle when the model fails to generate a response  don't start with {True or False },
-        pass
-    try:
-        status = bool(string_status)
-    except json.JSONDecodeError:
-        response_json_data = None
+            else:
+                logger.error(
+                    "Model generated a response that doesn't match the provided provided JSON format when diagnosis is failed",
+                    extra={
+                        "chat_id": chat_id,
+                        "diagnosis_id": chat_diagnosis_id,
+                        "response": response,
+                    },
+                )
+                raise Exception(
+                    "Model generated a response that doesn't match the provided provided JSON format when diagnosis is failed"
+                )
+
     # Clear memory
     del model
     del tokenizer
@@ -721,7 +802,9 @@ def seravian_llm():
         request: ChatDiagnosisRequest, api_key: str = Depends(get_api_key)
     ):
         try:
-            response = generate_diagnosis.remote(request.chat_id, request.messages)
+            response = generate_diagnosis.remote(
+                request.chat_id, request.chat_diagnosis_id, request.messages
+            )
             return response
         except Exception as e:
             raise HTTPException(
