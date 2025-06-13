@@ -807,8 +807,8 @@ def seravian_llm():
             )
             return response
         except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Error generating response: {str(e)}"
+            return Response(
+                status_code=400, content=f"Error generating response: {str(e)}"
             )
 
     # @fastapi_app.post("/", response_model=ChatResponse)
