@@ -460,13 +460,13 @@ def generate_diagnosis(message: str, chat_id: str):
         repetition_penalty=1.2,  # Penalize repetition
     )
     response: str = tokenizer.decode(outputs[0], skip_special_tokens=True)
-
+    
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
-    for delimeter in ["\nuser:","\nReasoning","\nExplanation","\n\n"]:
-        if delimeter in assistant_response:
-            assistant_response=assistant_response.split(delimeter)[0].strip()
-            break
+    response_parts = response.split(",", maxsplit=1)
+    response_status = response_parts[0].strip()     # "False"
+    response_part = response_parts[1].strip()  # The JSON string
+    response_json_data = json.loads(response_part)
     # Clear memory
     del model
     del tokenizer
@@ -501,7 +501,7 @@ def generate_diagnosis(message: str, chat_id: str):
     with open(diagnosis_filename, "w", encoding="utf-8") as f:
         json.dump(diagnoses_history, f, indent=4, ensure_ascii=False)
 
-    return assistant_response
+    return response_json_data
 
 
 # Define the FastAPI endpoint
