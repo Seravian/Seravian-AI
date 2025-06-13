@@ -1,4 +1,5 @@
 import json
+import threading
 from typing import List, Dict
 from pydantic import BaseModel, Field
 import modal
@@ -8,6 +9,7 @@ from fastapi import Depends, FastAPI, File, Form, Response, UploadFile, HTTPExce
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 import os
 import datetime
+import time
 
 # class ChatRequest(BaseModel):
 #     history: List[Dict[str, str]]
@@ -39,9 +41,15 @@ class EditHistoryMessageRequestVersion2(BaseModel):
         validate_by_name = True  # Enables
 
 
+class ChatDiagnosisMessageEntry(BaseModel):
+    is_ai: bool = Field(..., alias="isAi")
+    content: str
+
+
 class ChatDiagnosisRequest(BaseModel):
-    message: str
     chat_id: str = Field(..., alias="chatId")
+    diagnosis_message_prompt: str = Field(..., alias="diagnosisMessagePrompt")
+    messages: List[ChatDiagnosisMessageEntry] = Field(..., alias="messages")
 
     class Config:
         validate_by_name = True  # Enables
@@ -148,7 +156,10 @@ def generate_response(conversation_history):
     system_prompt = "You are a helpful, emotionally aware Assistant. Always respond with empathy based on the emotion. Acknowledge their emotional state briefly if it's relevant, then answer their question clearly and factually. If the user is angry or upset, remain calm and polite, but always answer their question."
     # Format history for the model
     chat_input = (
-        system_prompt+ "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        system_prompt
+        + "".join(
+            f"{turn['role']}: {turn['content']}\n" for turn in conversation_history
+        )
         + "assistant:"
     )
 
@@ -221,7 +232,11 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
 
     # Format history for the model
     chat_input = (
-        system_prompt + "\n\n" + "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        system_prompt
+        + "\n\n"
+        + "".join(
+            f"{turn['role']}: {turn['content']}\n" for turn in conversation_history
+        )
         + "assistant:"
     )
 
@@ -238,9 +253,9 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
 
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
-    for delimeter in ["\nuser:","\nReasoning","\nExplanation","\n\n"]:
+    for delimeter in ["\nuser:", "\nReasoning", "\nExplanation", "\n\n"]:
         if delimeter in assistant_response:
-            assistant_response=assistant_response.split(delimeter)[0].strip()
+            assistant_response = assistant_response.split(delimeter)[0].strip()
             break
 
     # Clear memory
@@ -252,6 +267,7 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
 
     # Step 3: Write updated list back to the file
     try:
+
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(conversation_history, f, indent=4, ensure_ascii=False)
     except PermissionError:
@@ -325,7 +341,10 @@ def edit_history_message_v2(
 
     # Format history for the model
     chat_input = (
-        system_prompt+ "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+        system_prompt
+        + "".join(
+            f"{turn['role']}: {turn['content']}\n" for turn in conversation_history
+        )
         + "assistant:"
     )
 
@@ -343,9 +362,9 @@ def edit_history_message_v2(
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
 
-    for delimeter in ["\nuser:","\nReasoning","\nExplanation","\n\n"]:
+    for delimeter in ["\nuser:", "\nReasoning", "\nExplanation", "\n\n"]:
         if delimeter in assistant_response:
-            assistant_response=assistant_response.split(delimeter)[0].strip()
+            assistant_response = assistant_response.split(delimeter)[0].strip()
             break
     # Clear memory
     del model
@@ -392,8 +411,7 @@ def delete_history_v2(chat_id: str):
             )
         except Exception as e:
             raise OSError(f"Unexpected error accessing file {chat_id}: {str(e)}")
-        except Exception as e:
-            raise OSError(f"Error deleting file '{chat_id}': {e}")
+
     else:
         raise FileNotFoundError(f"Chat history file not found: {chat_id}")
 
@@ -408,7 +426,11 @@ def delete_history_v2(chat_id: str):
         diagnosis_path: diagnosis_volume,
     },
 )
-def generate_diagnosis(message: str, chat_id: str):
+def generate_diagnosis(
+    chat_id: str,
+    diagnosis_message_prompt: str,
+    messages: list[ChatDiagnosisMessageEntry],
+):
     """
     Generate a response based on the conversation history and user message.
     """
@@ -426,22 +448,17 @@ def generate_diagnosis(message: str, chat_id: str):
     # region load history from local volume by chat_id as the filename.txt and create file if it doesn't exist
     # each line of file should be user: messageplaceholder or ai: responseplaceholder
 
-    filename = f"{chat_history_path}/{chat_id}.json"
     diagnosis_filename = f"{diagnosis_path}/{chat_id}.json"
 
-    if os.path.exists(filename):
-        with open(filename, "r", encoding="utf-8") as f:
-            try:
-                conversation_history: list[dict] = json.load(f)
-            except json.JSONDecodeError:
-                conversation_history: list[dict] = []
-    else:
-        conversation_history: list[dict] = []
-
-    conversation_context: list[dict] = list(
-        conversation_history
-    )  # Copy the conversation history list
-    conversation_history.append({"role": "user", "content": message})
+    conversation_history: list[dict] = [
+        {
+            "role": "assistant" if message_entry.is_ai else "user",
+            "content": message_entry.content,
+        }
+        for message_entry in messages
+    ]
+    conversation_context = list(conversation_history)
+    conversation_history.append({"role": "user", "content": diagnosis_message_prompt})
     # endregion
 
     # Format history for the model
@@ -463,10 +480,14 @@ def generate_diagnosis(message: str, chat_id: str):
     
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
+
     response_parts = response.split(",", maxsplit=1)
     response_status = response_parts[0].strip()     # "False"
     response_part = response_parts[1].strip()  # The JSON string
     response_json_data = json.loads(response_part)
+
+    
+
     # Clear memory
     del model
     del tokenizer
@@ -475,7 +496,7 @@ def generate_diagnosis(message: str, chat_id: str):
     diagnosis_entry = {
         "chat_id": chat_id,
         "timestamp": datetime.datetime.now().isoformat(),
-        "command": message,
+        "diagnosis_message_prompt": diagnosis_message_prompt,
         "diagnosis_response": assistant_response,
         "conversation_context": conversation_context,  # Original chat history without diagnosis interaction
     }
@@ -540,7 +561,7 @@ def seravian_llm():
             )
 
     @fastapi_app.post("/edit-history-message-v2", response_model=ChatResponse)
-    async def chat(request: EditHistoryMessageRequestVersion2):
+    async def chat_endpoint(request: EditHistoryMessageRequestVersion2):
 
         try:
             response = edit_history_message_v2.remote(
@@ -582,7 +603,9 @@ def seravian_llm():
         request: ChatDiagnosisRequest, api_key: str = Depends(get_api_key)
     ):
         try:
-            response = generate_diagnosis.remote(request.message, request.chat_id)
+            response = generate_diagnosis.remote(
+                request.chat_id, request.diagnosis_message_prompt, request.messages
+            )
             return ChatResponse(response=response)
         except Exception as e:
             raise HTTPException(
