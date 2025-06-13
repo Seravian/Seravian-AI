@@ -1,7 +1,7 @@
 import json
 import threading
-from typing import List, Dict
-from pydantic import BaseModel, Field
+from typing import List, Dict, Optional
+from pydantic import BaseModel, ConfigDict, Field
 import modal
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
@@ -48,11 +48,29 @@ class ChatDiagnosisMessageEntry(BaseModel):
 
 class ChatDiagnosisRequest(BaseModel):
     chat_id: str = Field(..., alias="chatId")
-    diagnosis_message_prompt: str = Field(..., alias="diagnosisMessagePrompt")
     messages: List[ChatDiagnosisMessageEntry] = Field(..., alias="messages")
 
     class Config:
         validate_by_name = True  # Enables
+
+
+def to_camel(string: str) -> str:
+    parts = string.split("_")
+    return parts[0] + "".join(word.capitalize() for word in parts[1:])
+
+
+class CamelModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+class ChatDiagnosisResponse(CamelModel):
+    chat_id: str
+    diagnosis_message_prompt: str
+    is_succeeded: bool
+    diagnosed_problem: Optional[str]
+    reasoning: Optional[str]
+    prescription: Optional[str]
+    failure_reason: Optional[str]
 
 
 class ChatResponse(BaseModel):
@@ -428,13 +446,31 @@ def delete_history_v2(chat_id: str):
 )
 def generate_diagnosis(
     chat_id: str,
-    diagnosis_message_prompt: str,
     messages: list[ChatDiagnosisMessageEntry],
-):
+) -> ChatDiagnosisResponse:
     """
     Generate a response based on the conversation history and user message.
     """
 
+    diagnosis_message_prompt = """You are a mental health assistant. Analyze all the messages in this conversation. Determine whether the user may be suffering from any identifiable mental health issues based on the content and tone of the messages.
+
+If you identify a problem, return your answer in the following JSON format:
+
+{
+  "Diagnosed problem": "<Clearly state the mental health issue in no more than 20 words, e.g., Generalized Anxiety Disorder>",
+  "Reasoning": "<Explain why you reached this conclusion, based on message patterns or content>",
+  "Activities to help with dealing with this problem": ["<List 2–3 simple, practical suggestions and exercises tailored to the issue>"]
+}
+
+If you cannot confidently identify a problem, return your answer in this fallback JSON format:
+
+{
+  "Diagnose failure reason": "<Clearly explain why no diagnosis could be made (e.g., not enough information, unclear patterns) if there are more reasons on why diagnosis couldn't be made state them clearly.>"
+}
+
+IMPORTANT: You must NEVER suggest or prescribe any type of medication. Your role is strictly limited to observational analysis and practical, non-medical suggestions.
+
+Only output one of these two JSON objects, and nothing else."""
     # Load tokenizer and model from volume
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     model = AutoModelForCausalLM.from_pretrained(
@@ -477,17 +513,99 @@ def generate_diagnosis(
         repetition_penalty=1.2,  # Penalize repetition
     )
     response: str = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    
+
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
 
-    response_parts = response.split(",", maxsplit=1)
-    response_status = response_parts[0].strip()     # "False"
+    response_parts = assistant_response.split(",", maxsplit=1)
+
+    if len(response_parts) != 2:
+        # handle when the model fails to generate a response  don't start with {True or False },
+        # log that the model generated a response that doesn't match the expected format that don't have one comma
+        pass
+
+    string_status = response_parts[0].strip()  # "False"
     response_part = response_parts[1].strip()  # The JSON string
-    response_json_data = json.loads(response_part)
 
-    
+    try:
+        response_json_data: dict = json.loads(response_part)
+    except json.JSONDecodeError:
+        # handle when the model fails to generate a response the  part after the comma is not valid json
+        response_json_data = dict()
+        pass
 
+    if string_status.lower() == "True":
+        # check if the response part match the provided provided JSON format when diagnosis is successful
+        if (
+            "Diagnosed problem" in response_json_data
+            and "Reasoning" in response_json_data
+            and "Activities to help with dealing with this problem"
+            in response_json_data
+            and len(response_json_data) == 3
+        ):
+            # check that each is not None and not whitespace and list is not None and not empty and also its items are not None and not whitespace
+            # and the value of "Activities to help with dealing with this problem"  is list of str
+            if (
+                response_json_data["Diagnosed problem"]
+                and response_json_data["Reasoning"]
+                and response_json_data["Diagnosed problem"].strip()
+                and response_json_data["Reasoning"].strip()
+                and isinstance(
+                    response_json_data[
+                        "Activities to help with dealing with this problem"
+                    ],
+                    list,
+                )
+                and response_json_data[
+                    "Activities to help with dealing with this problem"
+                ]
+                and not all(
+                    isinstance(item, str) and item and item.strip()
+                    for item in response_json_data[
+                        "Activities to help with dealing with this problem"
+                    ]
+                )
+            ):
+
+                # return the response
+                return ChatDiagnosisResponse(
+                    chat_id=chat_id,
+                    diagnosis_message_prompt=diagnosis_message_prompt,
+                    is_succeeded=True,
+                    diagnosed_problem=response_json_data["Diagnosed problem"],
+                    reasoning=response_json_data["Reasoning"],
+                    prescription=response_json_data[
+                        "Activities to help with dealing with this problem"
+                    ],
+                    failure_reason=None,
+                )
+
+    elif string_status.lower() == "False":
+        # check if the response part match the provided provided JSON format when diagnosis is failed
+        if (
+            "Diagnose failure reason" in response_json_data
+            and len(response_json_data) == 1
+        ):
+            if (
+                response_json_data["Diagnose failure reason"]
+                and response_json_data["Diagnosed problem"].strip()
+            ):
+                return ChatDiagnosisResponse(
+                    chat_id=chat_id,
+                    diagnosis_message_prompt=diagnosis_message_prompt,
+                    is_succeeded=False,
+                    diagnosed_problem=None,
+                    reasoning=None,
+                    prescription=None,
+                    failure_reason=response_json_data["Diagnose failure reason"],
+                )
+    else:
+        # handle when the model fails to generate a response  don't start with {True or False },
+        pass
+    try:
+        status = bool(string_status)
+    except json.JSONDecodeError:
+        response_json_data = None
     # Clear memory
     del model
     del tokenizer
@@ -598,15 +716,13 @@ def seravian_llm():
                 status_code=500, detail=f"Error generating response: {str(e)}"
             )
 
-    @fastapi_app.post("/get-diagnosis", response_model=ChatResponse)
+    @fastapi_app.post("/get-diagnosis", response_model=ChatDiagnosisResponse)
     async def get_diagnosis(
         request: ChatDiagnosisRequest, api_key: str = Depends(get_api_key)
     ):
         try:
-            response = generate_diagnosis.remote(
-                request.chat_id, request.diagnosis_message_prompt, request.messages
-            )
-            return ChatResponse(response=response)
+            response = generate_diagnosis.remote(request.chat_id, request.messages)
+            return response
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Error generating response: {str(e)}"
