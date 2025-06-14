@@ -471,7 +471,6 @@ def delete_history_v2(chat_id: str):
     timeout=600,
     volumes={
         model_path: model_cache_volume,
-        chat_history_path: chat_history_volume,
         diagnosis_path: diagnosis_volume,
     },
 )
@@ -525,11 +524,15 @@ Output ONLY the JSON object, nothing else."""
             for message_entry in messages
         ]
         conversation_context = list(conversation_history)
-        conversation_history.append({"role": "user", "content": diagnosis_message_prompt})
+        conversation_history.append(
+            {"role": "user", "content": diagnosis_message_prompt}
+        )
 
         # Format history for the model
         chat_input = (
-            "".join(f"{turn['role']}: {turn['content']}\n" for turn in conversation_history)
+            "".join(
+                f"{turn['role']}: {turn['content']}\n" for turn in conversation_history
+            )
             + "assistant:"
         )
 
@@ -557,7 +560,7 @@ Output ONLY the JSON object, nothing else."""
 
         # Enhanced JSON extraction and cleaning
         json_response = assistant_response.strip()
-        
+
         # Log the raw response for debugging
         logger.info(
             f"Raw model response for diagnosis",
@@ -568,12 +571,12 @@ Output ONLY the JSON object, nothing else."""
                 "response_length": len(json_response),
             },
         )
-        
+
         # More aggressive JSON cleaning and extraction
         if "{" in json_response:
             start_idx = json_response.find("{")
             json_response = json_response[start_idx:]
-            
+
             # Handle potential issues with incomplete JSON
             # Check if we have proper structure
             if json_response.count('"') % 2 != 0:
@@ -582,49 +585,54 @@ Output ONLY the JSON object, nothing else."""
                 # Try to complete the JSON structure
                 if not json_response.endswith('"'):
                     json_response += '"'
-                
+
                 # Check if we need closing braces/brackets
                 open_braces = json_response.count("{")
                 close_braces = json_response.count("}")
                 open_brackets = json_response.count("[")
                 close_brackets = json_response.count("]")
-                
+
                 # Add missing closing characters
                 if open_brackets > close_brackets:
                     json_response += "]" * (open_brackets - close_brackets)
                 if open_braces > close_braces:
                     json_response += "}" * (open_braces - close_braces)
-            
+
         # Clean up common formatting issues
         json_response = json_response.replace('"', '"').replace('"', '"')
-        json_response = json_response.replace(''', "'").replace(''', "'")
-        
+        json_response = json_response.replace(""", "'").replace(""", "'")
+
         # Additional cleaning for potential line breaks or formatting issues
         json_response = json_response.strip()
-        
+
         # Parse the JSON response with multiple attempts
         response_json_data = None
         parsing_attempts = []
-        
+
         # Attempt 1: Direct parsing
         try:
             response_json_data = json.loads(json_response)
             logger.info(f"JSON parsed successfully on first attempt")
         except json.JSONDecodeError as e:
             parsing_attempts.append(f"Direct parse failed: {str(e)}")
-            
+
             # Attempt 2: Try to fix common issues
             try:
                 # Fix potential issues with escaped characters
-                fixed_response = json_response.replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
+                fixed_response = (
+                    json_response.replace("\n", "\\n")
+                    .replace("\r", "\\r")
+                    .replace("\t", "\\t")
+                )
                 response_json_data = json.loads(fixed_response)
                 logger.info(f"JSON parsed successfully after escape character fix")
             except json.JSONDecodeError as e2:
                 parsing_attempts.append(f"Escape fix failed: {str(e2)}")
-                
+
                 # Attempt 3: Try with regex to extract valid JSON parts
                 try:
                     import re
+
                     # Look for complete key-value pairs
                     json_pattern = r'{\s*"[^"]*"\s*:\s*"[^"]*"(?:\s*,\s*"[^"]*"\s*:\s*(?:"[^"]*"|\[[^\]]*\]))*\s*}'
                     matches = re.search(json_pattern, json_response, re.DOTALL)
@@ -633,51 +641,80 @@ Output ONLY the JSON object, nothing else."""
                         response_json_data = json.loads(clean_json)
                         logger.info(f"JSON parsed successfully using regex extraction")
                     else:
-                        raise json.JSONDecodeError("No valid JSON pattern found", json_response, 0)
+                        raise json.JSONDecodeError(
+                            "No valid JSON pattern found", json_response, 0
+                        )
                 except (json.JSONDecodeError, ImportError) as e3:
                     parsing_attempts.append(f"Regex extraction failed: {str(e3)}")
-                    
+
                     # Final attempt: Manual reconstruction for known structure
                     try:
                         # Try to manually extract the expected fields
                         manual_json = {}
-                        
+
                         # Look for "Diagnosed problem"
                         if '"Diagnosed problem"' in json_response:
-                            problem_match = re.search(r'"Diagnosed problem"\s*:\s*"([^"]*)"', json_response)
+                            problem_match = re.search(
+                                r'"Diagnosed problem"\s*:\s*"([^"]*)"', json_response
+                            )
                             if problem_match:
-                                manual_json["Diagnosed problem"] = problem_match.group(1)
-                        
+                                manual_json["Diagnosed problem"] = problem_match.group(
+                                    1
+                                )
+
                         # Look for "Reasoning"
                         if '"Reasoning"' in json_response:
-                            reasoning_match = re.search(r'"Reasoning"\s*:\s*"([^"]*)"', json_response, re.DOTALL)
+                            reasoning_match = re.search(
+                                r'"Reasoning"\s*:\s*"([^"]*)"', json_response, re.DOTALL
+                            )
                             if reasoning_match:
                                 manual_json["Reasoning"] = reasoning_match.group(1)
-                        
+
                         # Look for "Activities" array
-                        if '"Activities to help with dealing with this problem"' in json_response:
-                            activities_match = re.search(r'"Activities to help with dealing with this problem"\s*:\s*\[([^\]]*)\]', json_response, re.DOTALL)
+                        if (
+                            '"Activities to help with dealing with this problem"'
+                            in json_response
+                        ):
+                            activities_match = re.search(
+                                r'"Activities to help with dealing with this problem"\s*:\s*\[([^\]]*)\]',
+                                json_response,
+                                re.DOTALL,
+                            )
                             if activities_match:
                                 activities_str = activities_match.group(1)
                                 # Extract individual activities
-                                activity_items = re.findall(r'"([^"]*)"', activities_str)
-                                manual_json["Activities to help with dealing with this problem"] = activity_items
-                        
+                                activity_items = re.findall(
+                                    r'"([^"]*)"', activities_str
+                                )
+                                manual_json[
+                                    "Activities to help with dealing with this problem"
+                                ] = activity_items
+
                         # Look for failure reason
                         if '"Diagnose failure reason"' in json_response:
-                            failure_match = re.search(r'"Diagnose failure reason"\s*:\s*"([^"]*)"', json_response, re.DOTALL)
+                            failure_match = re.search(
+                                r'"Diagnose failure reason"\s*:\s*"([^"]*)"',
+                                json_response,
+                                re.DOTALL,
+                            )
                             if failure_match:
-                                manual_json["Diagnose failure reason"] = failure_match.group(1)
-                        
+                                manual_json["Diagnose failure reason"] = (
+                                    failure_match.group(1)
+                                )
+
                         if manual_json:
                             response_json_data = manual_json
-                            logger.info(f"JSON reconstructed manually with keys: {list(manual_json.keys())}")
+                            logger.info(
+                                f"JSON reconstructed manually with keys: {list(manual_json.keys())}"
+                            )
                         else:
                             raise ValueError("Manual reconstruction failed")
-                            
+
                     except Exception as e4:
-                        parsing_attempts.append(f"Manual reconstruction failed: {str(e4)}")
-        
+                        parsing_attempts.append(
+                            f"Manual reconstruction failed: {str(e4)}"
+                        )
+
         # If all parsing attempts failed
         if response_json_data is None:
             logger.error(
@@ -693,9 +730,9 @@ Output ONLY the JSON object, nothing else."""
                 chat_id=chat_id,
                 diagnosis_message_prompt=diagnosis_message_prompt,
                 is_succeeded=False,
-                failure_reason=json_response
+                failure_reason=json_response,
             )
-        
+
         logger.info(
             f"Successfully parsed JSON for diagnosis",
             extra={
@@ -706,44 +743,57 @@ Output ONLY the JSON object, nothing else."""
         )
 
         # Validate and process successful diagnosis
-        if all(key in response_json_data for key in ["Diagnosed problem", "Reasoning", "Activities to help with dealing with this problem"]):
+        if all(
+            key in response_json_data
+            for key in [
+                "Diagnosed problem",
+                "Reasoning",
+                "Activities to help with dealing with this problem",
+            ]
+        ):
             diagnosed_problem = response_json_data.get("Diagnosed problem", "").strip()
             reasoning = response_json_data.get("Reasoning", "").strip()
-            activities = response_json_data.get("Activities to help with dealing with this problem", [])
-            
+            activities = response_json_data.get(
+                "Activities to help with dealing with this problem", []
+            )
+
             # Validate the data
             if not diagnosed_problem:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
-                    failure_reason="No Diagnosed Problem."
+                    failure_reason="No Diagnosed Problem.",
                 )
-            
+
             if not reasoning:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
-                    failure_reason="No Reasoning Found."
+                    failure_reason="No Reasoning Found.",
                 )
-            
+
             if not isinstance(activities, list) or not activities:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
-                    failure_reason="No Activities  or excercises could be prescribed."
+                    failure_reason="No Activities  or excercises could be prescribed.",
                 )
-            
+
             # Ensure all activities are valid strings
-            valid_activities = [str(activity).strip() for activity in activities if str(activity).strip()]
+            valid_activities = [
+                str(activity).strip()
+                for activity in activities
+                if str(activity).strip()
+            ]
             if not valid_activities:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
-                    failure_reason="No Activities  or excercises could be prescribed."
+                    failure_reason="No Activities  or excercises could be prescribed.",
                 )
 
             # Save successful diagnosis
@@ -785,16 +835,18 @@ Output ONLY the JSON object, nothing else."""
 
         # Handle failure case
         elif "Diagnose failure reason" in response_json_data:
-            failure_reason = response_json_data.get("Diagnose failure reason", "").strip()
-            
+            failure_reason = response_json_data.get(
+                "Diagnose failure reason", ""
+            ).strip()
+
             if not failure_reason:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
-                    failure_reason="Failed to provide Failure Reason"
+                    failure_reason="Failed to provide Failure Reason",
                 )
-            
+
             return ChatDiagnosisResponse(
                 chat_id=chat_id,
                 diagnosis_message_prompt=diagnosis_message_prompt,
@@ -817,7 +869,7 @@ Output ONLY the JSON object, nothing else."""
                 chat_id=chat_id,
                 diagnosis_message_prompt=diagnosis_message_prompt,
                 is_succeeded=False,
-                failure_reason=f"Unexpected Output."
+                failure_reason=f"Unexpected Output.",
             )
 
     except Exception as e:
@@ -833,7 +885,7 @@ Output ONLY the JSON object, nothing else."""
             chat_id=chat_id,
             diagnosis_message_prompt=diagnosis_message_prompt,
             is_succeeded=False,
-            failure_reason=f"Internal error: {str(e)}"
+            failure_reason=f"Internal error: {str(e)}",
         )
 
 
