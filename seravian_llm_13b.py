@@ -302,7 +302,7 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
 
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
-    for delimeter in ["\nuser:", "\nReasoning", "\nExplanation", "\n\n"]:
+    for delimeter in ["\nuser:", "\nReasoning:", "\nExplanation", "\nResponse:","\n\n"]:
         if delimeter in assistant_response:
             assistant_response = assistant_response.split(delimeter)[0].strip()
             break
@@ -411,7 +411,7 @@ def edit_history_message_v2(
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
 
-    for delimeter in ["\nuser:", "\nReasoning", "\nExplanation", "\n\n"]:
+    for delimeter in ["\nuser:", "\nReasoning", "\nExplanation", "\nResponse:","\n\n"]:
         if delimeter in assistant_response:
             assistant_response = assistant_response.split(delimeter)[0].strip()
             break
