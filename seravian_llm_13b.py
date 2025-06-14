@@ -484,9 +484,7 @@ def generate_diagnosis(
     Generate a diagnosis based on the conversation history.
     """
 
-    diagnosis_message_prompt = """You are a wellness conversation analyzer. Your role is to identify emotional patterns and suggest practical wellness activities.
-
-Your task is to analyze conversation messages and identify emotional patterns or stress indicators. Focus on observable communication patterns rather than medical conditions.
+    diagnosis_message_prompt = """Analyze conversation messages and tell me if I suffer from mental health problems, if I do tell me what it is exactly and provide reasoning.
 
 ### INSTRUCTIONS ###
 1. Analyze the conversation for emotional patterns, stress indicators, or wellness concerns
@@ -496,20 +494,20 @@ Your task is to analyze conversation messages and identify emotional patterns or
 
 ### OUTPUT FORMATS ###
 
-For identified wellness concerns, return this JSON:
+For identified mental health problems, return this JSON:
 {
-  "identified_pattern": "<Describe the emotional/stress pattern in simple terms, e.g., 'High stress and worry patterns'>",
-  "observation_basis": "<Explain what communication patterns or keywords led to this conclusion>",
-  "wellness_activities": [
+  "Diagnosed problem": "<Describe the emotional/stress pattern in simple terms, e.g., 'High stress and worry patterns'>",
+  "Reasoning": "<Explain what communication patterns or keywords led to this conclusion>",
+  "Activities to help with dealing with this problem": [
     "<Practical wellness activity 1>",
     "<Practical wellness activity 2>",
     "<Practical wellness activity 3>"
   ]
 }
 
-If no clear patterns emerge, return this JSON:
+If no clear mental health problems emerge, return this JSON:
 {
-  "analysis_limitation": "<Explain why patterns couldn't be identified, e.g., 'Insufficient conversation data to identify clear patterns'>"
+  "Diagnose failure reason": "<Explain why patterns couldn't be identified, e.g., 'Insufficient conversation data to identify clear patterns'>"
 }
 
 Respond with only valid JSON. No additional text."""
