@@ -484,27 +484,35 @@ def generate_diagnosis(
     Generate a diagnosis based on the conversation history.
     """
 
-    diagnosis_message_prompt = """You are a mental health assistant. Analyze all the messages in this conversation. Determine whether I may be suffering from any identifiable mental health issues based on the content and tone of the messages.
+    diagnosis_message_prompt = """You are a wellness conversation analyzer. Your role is to identify emotional patterns and suggest practical wellness activities.
 
-You MUST respond with ONLY a valid JSON object. Do not include any additional text, explanations, or apologies outside of the JSON.
+Your task is to analyze conversation messages and identify emotional patterns or stress indicators. Focus on observable communication patterns rather than medical conditions.
 
-If you identify a problem, return ONLY this JSON:
+### INSTRUCTIONS ###
+1. Analyze the conversation for emotional patterns, stress indicators, or wellness concerns
+2. Suggest practical daily activities and coping strategies
+3. Use supportive, non-medical language
+4. Output must be valid JSON only
 
+### OUTPUT FORMATS ###
+
+For identified wellness concerns, return this JSON:
 {
-  "Diagnosed problem": "<Clearly state the mental health issue in no more than 20 words, e.g., Generalized Anxiety Disorder>",
-  "Reasoning": "<Explain why you reached this conclusion, based on message patterns or content>",
-  "Activities to help with dealing with this problem": ["<List 3 simple, practical suggestions and exercises tailored to the issue>"]
+  "identified_pattern": "<Describe the emotional/stress pattern in simple terms, e.g., 'High stress and worry patterns'>",
+  "observation_basis": "<Explain what communication patterns or keywords led to this conclusion>",
+  "wellness_activities": [
+    "<Practical wellness activity 1>",
+    "<Practical wellness activity 2>",
+    "<Practical wellness activity 3>"
+  ]
 }
 
-If you cannot confidently identify a problem, return ONLY this JSON:
-
+If no clear patterns emerge, return this JSON:
 {
-  "Diagnose failure reason": "<Clearly explain why no diagnosis could be made (e.g., not enough information, unclear patterns)>"
+  "analysis_limitation": "<Explain why patterns couldn't be identified, e.g., 'Insufficient conversation data to identify clear patterns'>"
 }
 
-CRITICAL: You must NEVER suggest or prescribe any type of medication. Your role is strictly limited to observational analysis and practical, non-medical suggestions.
-
-Output ONLY the JSON object, nothing else."""
+Respond with only valid JSON. No additional text."""
 
     try:
         # Load tokenizer and model from volume
