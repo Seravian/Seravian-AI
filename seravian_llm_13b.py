@@ -751,7 +751,7 @@ Respond with only valid JSON. No additional text."""
             reasoning = reasoning.strip() if reasoning else ""
             
             # FIXED: Stricter validation
-            if not diagnosed_problem or len(diagnosed_problem) < 3:
+            if not diagnosed_problem :
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
@@ -759,10 +759,10 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="Diagnosed problem is missing or too short"
+                    failure_reason="Diagnosed problem is missing"
                 )
             
-            if not reasoning or len(reasoning) < 10:
+            if not reasoning:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
@@ -789,7 +789,7 @@ Respond with only valid JSON. No additional text."""
             for activity in activities:
                 if activity is not None:
                     activity_str = str(activity).strip()
-                    if activity_str and len(activity_str) > 5:
+                    if activity_str :
                         valid_activities.append(activity_str)
             
             if not valid_activities:
@@ -848,7 +848,7 @@ Respond with only valid JSON. No additional text."""
             # Safe strip operation - handle None values
             failure_reason = failure_reason.strip() if failure_reason else ""
             
-            if not failure_reason or len(failure_reason) < 5:
+            if not failure_reason:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
