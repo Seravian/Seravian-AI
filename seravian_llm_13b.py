@@ -484,7 +484,7 @@ def generate_diagnosis(
     Generate a diagnosis based on the conversation history.
     """
 
-    diagnosis_message_prompt = """You are a mental health assistant. Analyze all the messages in this conversation. Determine whether I may be suffering from any identifiable mental health issues based on the content and tone of the messages.
+    diagnosis_message_prompt = """Analyze all the messages in this conversation. Determine whether I may be suffering from any identifiable mental health issues e.g.(stress, depression, PTSD, pibolar disorder,anxiety,etc) based on the content and tone of the messages.
 
 ### INSTRUCTIONS ###
 1. Analyze the conversation for emotional patterns, stress indicators, or wellness concerns
@@ -496,7 +496,7 @@ def generate_diagnosis(
 
 For identified mental health problems, return this JSON:
 {
-  "Diagnosed problem": "<Exact name of condition' eg. stress, depression, PTSD, pibolar disorder>",
+  "Diagnosed problem": "<Exact name of condition' eg. (stress, depression, PTSD, pibolar disorder,anxiety,etc) you must specify the name of the condition if there is>",
   "Reasoning": "<Explain what communication patterns or keywords led to this conclusion>",
   "Activities to help with dealing with this problem": [
     "<Practical wellness activity 1>",
@@ -610,7 +610,6 @@ Respond with only valid JSON. No additional text."""
         response_json_data = None 
 
         # Parse the JSON response with multiple attempts
-        
         parsing_attempts = []
         
         # Attempt 1: Direct parsing
@@ -646,35 +645,37 @@ Respond with only valid JSON. No additional text."""
                     
                     # Final attempt: Manual reconstruction for known structure
                     try:
-                        # Try to manually extract the expected fields
+                        # Try to manually extract the expected fields - FIXED LOGIC
                         manual_json = {}
                         
-                        # Look for "Diagnosed problem"
-                        if '"Diagnosed problem"' in json_response:
-                            problem_match = re.search(r'"Diagnosed problem"\s*:\s*"([^"]*)"', json_response)
-                            if problem_match:
-                                manual_json["Diagnosed problem"] = problem_match.group(1)
-                        
-                        # Look for "Reasoning"
-                        if '"Reasoning"' in json_response:
-                            reasoning_match = re.search(r'"Reasoning"\s*:\s*"([^"]*)"', json_response, re.DOTALL)
-                            if reasoning_match:
-                                manual_json["Reasoning"] = reasoning_match.group(1)
-                        
-                        # Look for "Activities" array
-                        if '"Activities to help with dealing with this problem"' in json_response:
-                            activities_match = re.search(r'"Activities to help with dealing with this problem"\s*:\s*\[([^\]]*)\]', json_response, re.DOTALL)
-                            if activities_match:
-                                activities_str = activities_match.group(1)
-                                # Extract individual activities
-                                activity_items = re.findall(r'"([^"]*)"', activities_str)
-                                manual_json["Activities to help with dealing with this problem"] = activity_items
-                        
-                        # Look for failure reason
+                        # FIXED: Check for failure reason FIRST and make it exclusive
                         if '"Diagnose failure reason"' in json_response:
                             failure_match = re.search(r'"Diagnose failure reason"\s*:\s*"([^"]*)"', json_response, re.DOTALL)
                             if failure_match:
-                                manual_json["Diagnose failure reason"] = failure_match.group(1)
+                                # ONLY extract failure reason, ignore success fields
+                                manual_json = {"Diagnose failure reason": failure_match.group(1)}
+                        else:
+                            # Only extract success fields if no failure reason present
+                            # Look for "Diagnosed problem"
+                            if '"Diagnosed problem"' in json_response:
+                                problem_match = re.search(r'"Diagnosed problem"\s*:\s*"([^"]*)"', json_response)
+                                if problem_match:
+                                    manual_json["Diagnosed problem"] = problem_match.group(1)
+                            
+                            # Look for "Reasoning"
+                            if '"Reasoning"' in json_response:
+                                reasoning_match = re.search(r'"Reasoning"\s*:\s*"([^"]*)"', json_response, re.DOTALL)
+                                if reasoning_match:
+                                    manual_json["Reasoning"] = reasoning_match.group(1)
+                            
+                            # Look for "Activities" array
+                            if '"Activities to help with dealing with this problem"' in json_response:
+                                activities_match = re.search(r'"Activities to help with dealing with this problem"\s*:\s*\[([^\]]*)\]', json_response, re.DOTALL)
+                                if activities_match:
+                                    activities_str = activities_match.group(1)
+                                    # Extract individual activities
+                                    activity_items = re.findall(r'"([^"]*)"', activities_str)
+                                    manual_json["Activities to help with dealing with this problem"] = activity_items
                         
                         if manual_json:
                             response_json_data = manual_json
@@ -703,7 +704,7 @@ Respond with only valid JSON. No additional text."""
                 diagnosed_problem=None,
                 reasoning=None,
                 prescription=None,
-                failure_reason=json_response
+                failure_reason="Failed to parse model response as valid JSON"
             )
         
         logger.info(
@@ -715,14 +716,41 @@ Respond with only valid JSON. No additional text."""
             },
         )
 
-        # Validate and process successful diagnosis
-        if all(key in response_json_data for key in ["Diagnosed problem", "Reasoning", "Activities to help with dealing with this problem"]):
-            diagnosed_problem = response_json_data.get("Diagnosed problem", "")
-            reasoning = response_json_data.get("Reasoning", "")
-            activities = response_json_data.get("Activities to help with dealing with this problem", [])
+        # FIXED: Add response type detection before validation
+        has_failure_reason = "Diagnose failure reason" in response_json_data
+        has_success_fields = all(key in response_json_data for key in ["Diagnosed problem", "Reasoning", "Activities to help with dealing with this problem"])
+        
+        # Handle mixed responses (both success and failure fields present)
+        if has_failure_reason and has_success_fields:
+            logger.warning(f"Mixed response detected with both success and failure fields, treating as failure")
+            failure_reason = response_json_data.get("Diagnose failure reason", "") or ""
+            failure_reason = failure_reason.strip() if failure_reason else ""
             
-            # Validate the data
-            if not diagnosed_problem:
+            if not failure_reason:
+                failure_reason = "Model returned inconsistent response format"
+            
+            return ChatDiagnosisResponse(
+                chat_id=chat_id,
+                diagnosis_message_prompt=diagnosis_message_prompt,
+                is_succeeded=False,
+                diagnosed_problem=None,
+                reasoning=None,
+                prescription=None,
+                failure_reason=failure_reason
+            )
+
+        # Process success response
+        if has_success_fields and not has_failure_reason:
+            diagnosed_problem = response_json_data.get("Diagnosed problem", "") or ""
+            reasoning = response_json_data.get("Reasoning", "") or ""
+            activities = response_json_data.get("Activities to help with dealing with this problem", []) or []
+            
+            # Safe strip operations - handle None values
+            diagnosed_problem = diagnosed_problem.strip() if diagnosed_problem else ""
+            reasoning = reasoning.strip() if reasoning else ""
+            
+            # FIXED: Stricter validation
+            if not diagnosed_problem or len(diagnosed_problem) < 3:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
@@ -730,10 +758,10 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="No Diagnosed Problem."
+                    failure_reason="Diagnosed problem is missing or too short"
                 )
             
-            if not reasoning:
+            if not reasoning or len(reasoning) < 10:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
@@ -741,7 +769,7 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="No Reasoning Found."
+                    failure_reason="Reasoning is missing or insufficient"
                 )
             
             if not isinstance(activities, list) or not activities:
@@ -752,11 +780,17 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="No Activities  or excercises could be prescribed."
+                    failure_reason="No activities or exercises could be prescribed"
                 )
             
-            # Ensure all activities are valid strings
-            valid_activities = [str(activity).strip() for activity in activities if str(activity).strip()]
+            # Ensure all activities are valid strings - handle None values
+            valid_activities = []
+            for activity in activities:
+                if activity is not None:
+                    activity_str = str(activity).strip()
+                    if activity_str and len(activity_str) > 5:
+                        valid_activities.append(activity_str)
+            
             if not valid_activities:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
@@ -765,7 +799,7 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="No Activities  or excercises could be prescribed."
+                    failure_reason="Activities are too short or invalid"
                 )
 
             # Save successful diagnosis
@@ -807,10 +841,13 @@ Respond with only valid JSON. No additional text."""
             )
 
         # Handle failure case
-        elif "Diagnose failure reason" in response_json_data:
-            failure_reason = response_json_data.get("Diagnose failure reason", "").strip()
+        elif has_failure_reason and not has_success_fields:
+            failure_reason = response_json_data.get("Diagnose failure reason", "") or ""
             
-            if not failure_reason:
+            # Safe strip operation - handle None values
+            failure_reason = failure_reason.strip() if failure_reason else ""
+            
+            if not failure_reason or len(failure_reason) < 5:
                 return ChatDiagnosisResponse(
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
@@ -818,7 +855,7 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="Failed to provide Failure Reason"
+                    failure_reason="Model failed to provide adequate failure reason"
                 )
             
             return ChatDiagnosisResponse(
@@ -840,6 +877,8 @@ Respond with only valid JSON. No additional text."""
                     "diagnosis_id": chat_diagnosis_id,
                     "response": assistant_response,
                     "json_keys": list(response_json_data.keys()),
+                    "has_failure_reason": has_failure_reason,
+                    "has_success_fields": has_success_fields,
                 },
             )
             return ChatDiagnosisResponse(
@@ -849,7 +888,7 @@ Respond with only valid JSON. No additional text."""
                 diagnosed_problem=None,
                 reasoning=None,
                 prescription=None,
-                failure_reason=f"Unexpected Output."
+                failure_reason="Model returned unexpected response format"
             )
 
     except Exception as e:
