@@ -475,6 +475,7 @@ def delete_history_v2(chat_id: str):
         diagnosis_path: diagnosis_volume,
     },
 )
+
 def generate_diagnosis(
     chat_id: str,
     chat_diagnosis_id: int,
@@ -484,20 +485,19 @@ def generate_diagnosis(
     Generate a diagnosis based on the conversation history.
     """
 
-    diagnosis_message_prompt = """Analyze all the messages in this conversation. Determine whether I may be suffering from any identifiable mental health issues e.g.(stress, depression, PTSD, pibolar disorder,anxiety,etc) based on the content and tone of the messages.
+    diagnosis_message_prompt = """You are a mental health assistant. Analyze all the messages in this conversation. Determine whether I may be suffering from any identifiable mental health issues based on the content and tone of the messages.
 
 ### INSTRUCTIONS ###
-1. Does the user's messages align with any mental health disorders like (stress, depression, PTSD, pibolar disorder,anxiety,etc)
-2. Analyze the conversation for emotional patterns, stress indicators, or wellness concerns
-3. Suggest practical daily activities and coping strategies
-4. Use supportive, non-medical language
-5. Output must be valid JSON only
+1. Analyze the conversation for emotional patterns, stress indicators, or wellness concerns
+2. Suggest practical daily activities and coping strategies
+3. Use supportive, non-medical language
+4. Output must be valid JSON only
 
 ### OUTPUT FORMATS ###
 
 For identified mental health problems, return this JSON:
 {
-  "Diagnosed problem": "<Exact name of condition' eg. (stress, depression, PTSD, pibolar disorder,anxiety,etc) you must specify the name of the condition if there is>",
+  "Diagnosed problem": "<Exact name of condition' eg. stress, depression, PTSD, pibolar disorder>",
   "Reasoning": "<Explain what communication patterns or keywords led to this conclusion>",
   "Activities to help with dealing with this problem": [
     "<Practical wellness activity 1>",
