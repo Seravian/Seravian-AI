@@ -121,7 +121,7 @@ model_cache_volume = modal.Volume.from_name(
 )
 
 chat_history_volume = modal.Volume.from_name(
-    "chat-history-volume", create_if_missing=True
+    "13b-chat-history-volume", create_if_missing=True
 )
 diagnosis_volume = modal.Volume.from_name(
     "diagnosis-history-volume", create_if_missing=True
@@ -302,7 +302,7 @@ def generate_response_version2(message: str, message_id: int, chat_id: str):
 
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
-    for delimeter in ["\nuser:", "\nReasoning:", "\nExplanation", "\nResponse:","\n\n"]:
+    for delimeter in ["\nuser:", "\nReasoning", "\nExplanation", "\nResponse","\n\n"]:
         if delimeter in assistant_response:
             assistant_response = assistant_response.split(delimeter)[0].strip()
             break
@@ -411,7 +411,7 @@ def edit_history_message_v2(
     # Extract assistant's response
     assistant_response = response.split("assistant:")[-1].strip()
 
-    for delimeter in ["\nuser:", "\nReasoning", "\nExplanation", "\nResponse:","\n\n"]:
+    for delimeter in ["\nuser:", "\nReasoning", "\nExplanation", "\nResponse","\n\n"]:
         if delimeter in assistant_response:
             assistant_response = assistant_response.split(delimeter)[0].strip()
             break
@@ -484,7 +484,7 @@ def generate_diagnosis(
     Generate a diagnosis based on the conversation history.
     """
 
-    diagnosis_message_prompt = """Analyze conversation messages and tell me if I suffer from mental health problems, if I do tell me what it is exactly and provide reasoning.
+    diagnosis_message_prompt = """You are a mental health assistant. Analyze all the messages in this conversation. Determine whether I may be suffering from any identifiable mental health issues based on the content and tone of the messages.
 
 ### INSTRUCTIONS ###
 1. Analyze the conversation for emotional patterns, stress indicators, or wellness concerns
@@ -496,7 +496,7 @@ def generate_diagnosis(
 
 For identified mental health problems, return this JSON:
 {
-  "Diagnosed problem": "<Describe the emotional/stress pattern in simple terms, e.g., 'High stress and worry patterns'>",
+  "Diagnosed problem": "<Exact name of condition' eg. stress, depression, PTSD, pibolar disorder>",
   "Reasoning": "<Explain what communication patterns or keywords led to this conclusion>",
   "Activities to help with dealing with this problem": [
     "<Practical wellness activity 1>",
@@ -562,7 +562,7 @@ Respond with only valid JSON. No additional text."""
         torch.cuda.empty_cache()
 
         # Enhanced JSON extraction and cleaning
-        json_response = assistant_response.strip()
+        json_response = assistant_response
         
         # Log the raw response for debugging
         logger.info(
@@ -607,9 +607,10 @@ Respond with only valid JSON. No additional text."""
         
         # Additional cleaning for potential line breaks or formatting issues
         json_response = json_response.strip()
-        
+        response_json_data = None 
+
         # Parse the JSON response with multiple attempts
-        response_json_data = None
+        
         parsing_attempts = []
         
         # Attempt 1: Direct parsing
@@ -699,6 +700,9 @@ Respond with only valid JSON. No additional text."""
                 chat_id=chat_id,
                 diagnosis_message_prompt=diagnosis_message_prompt,
                 is_succeeded=False,
+                diagnosed_problem=None,
+                reasoning=None,
+                prescription=None,
                 failure_reason=json_response
             )
         
@@ -713,8 +717,8 @@ Respond with only valid JSON. No additional text."""
 
         # Validate and process successful diagnosis
         if all(key in response_json_data for key in ["Diagnosed problem", "Reasoning", "Activities to help with dealing with this problem"]):
-            diagnosed_problem = response_json_data.get("Diagnosed problem", "").strip()
-            reasoning = response_json_data.get("Reasoning", "").strip()
+            diagnosed_problem = response_json_data.get("Diagnosed problem", "")
+            reasoning = response_json_data.get("Reasoning", "")
             activities = response_json_data.get("Activities to help with dealing with this problem", [])
             
             # Validate the data
@@ -723,6 +727,9 @@ Respond with only valid JSON. No additional text."""
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
+                    diagnosed_problem=None,
+                    reasoning=None,
+                    prescription=None,
                     failure_reason="No Diagnosed Problem."
                 )
             
@@ -731,6 +738,9 @@ Respond with only valid JSON. No additional text."""
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
+                    diagnosed_problem=None,
+                    reasoning=None,
+                    prescription=None,
                     failure_reason="No Reasoning Found."
                 )
             
@@ -739,6 +749,9 @@ Respond with only valid JSON. No additional text."""
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
+                    diagnosed_problem=None,
+                    reasoning=None,
+                    prescription=None,
                     failure_reason="No Activities  or excercises could be prescribed."
                 )
             
@@ -749,6 +762,9 @@ Respond with only valid JSON. No additional text."""
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
+                    diagnosed_problem=None,
+                    reasoning=None,
+                    prescription=None,
                     failure_reason="No Activities  or excercises could be prescribed."
                 )
 
@@ -787,6 +803,7 @@ Respond with only valid JSON. No additional text."""
                 diagnosed_problem=diagnosed_problem,
                 reasoning=reasoning,
                 prescription=valid_activities,
+                failure_reason=None
             )
 
         # Handle failure case
@@ -798,6 +815,9 @@ Respond with only valid JSON. No additional text."""
                     chat_id=chat_id,
                     diagnosis_message_prompt=diagnosis_message_prompt,
                     is_succeeded=False,
+                    diagnosed_problem=None,
+                    reasoning=None,
+                    prescription=None,
                     failure_reason="Failed to provide Failure Reason"
                 )
             
@@ -805,6 +825,9 @@ Respond with only valid JSON. No additional text."""
                 chat_id=chat_id,
                 diagnosis_message_prompt=diagnosis_message_prompt,
                 is_succeeded=False,
+                diagnosed_problem=None,
+                reasoning=None,
+                prescription=None,
                 failure_reason=failure_reason,
             )
 
@@ -823,6 +846,9 @@ Respond with only valid JSON. No additional text."""
                 chat_id=chat_id,
                 diagnosis_message_prompt=diagnosis_message_prompt,
                 is_succeeded=False,
+                diagnosed_problem=None,
+                reasoning=None,
+                prescription=None,
                 failure_reason=f"Unexpected Output."
             )
 
@@ -839,6 +865,9 @@ Respond with only valid JSON. No additional text."""
             chat_id=chat_id,
             diagnosis_message_prompt=diagnosis_message_prompt,
             is_succeeded=False,
+            diagnosed_problem=None,
+            reasoning=None,
+            prescription=None,
             failure_reason=f"Internal error: {str(e)}"
         )
 
