@@ -759,7 +759,7 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="Diagnosed problem is missing"
+                    failure_reason="Provided information in messages are not enough to generate a diagnosis."
                 )
             
             if not reasoning:
@@ -770,7 +770,7 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="Reasoning is missing or insufficient"
+                    failure_reason="Provided information in messages are not enough to generate a reasoning for diagnosis."
                 )
             
             if not isinstance(activities, list) or not activities:
@@ -781,7 +781,7 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="No activities or exercises could be prescribed"
+                    failure_reason="No activities or exercises could be prescribed."
                 )
             
             # Ensure all activities are valid strings - handle None values
@@ -800,7 +800,7 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="Activities are too short or invalid"
+                    failure_reason="No activities or exercises could be prescribed."
                 )
 
             # Save successful diagnosis
@@ -856,7 +856,7 @@ Respond with only valid JSON. No additional text."""
                     diagnosed_problem=None,
                     reasoning=None,
                     prescription=None,
-                    failure_reason="Model failed to provide adequate failure reason"
+                    failure_reason="Failed to generate a diagnosis please try again after sending more messages."
                 )
             
             return ChatDiagnosisResponse(
@@ -889,7 +889,7 @@ Respond with only valid JSON. No additional text."""
                 diagnosed_problem=None,
                 reasoning=None,
                 prescription=None,
-                failure_reason="Model returned unexpected response format"
+                failure_reason="Failed to generate a diagnosis please try again after sending more messages."
             )
 
     except Exception as e:
@@ -908,7 +908,7 @@ Respond with only valid JSON. No additional text."""
             diagnosed_problem=None,
             reasoning=None,
             prescription=None,
-            failure_reason=f"Internal error: {str(e)}"
+            failure_reason="Failed to generate a diagnosis please try again after sending more messages."
         )
 
 
