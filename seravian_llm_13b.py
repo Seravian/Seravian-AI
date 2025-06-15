@@ -487,10 +487,11 @@ def generate_diagnosis(
     diagnosis_message_prompt = """Analyze all the messages in this conversation. Determine whether I may be suffering from any identifiable mental health issues e.g.(stress, depression, PTSD, pibolar disorder,anxiety,etc) based on the content and tone of the messages.
 
 ### INSTRUCTIONS ###
-1. Analyze the conversation for emotional patterns, stress indicators, or wellness concerns
-2. Suggest practical daily activities and coping strategies
-3. Use supportive, non-medical language
-4. Output must be valid JSON only
+1. Does the user's messages align with any mental health disorders like (stress, depression, PTSD, pibolar disorder,anxiety,etc)
+2. Analyze the conversation for emotional patterns, stress indicators, or wellness concerns
+3. Suggest practical daily activities and coping strategies
+4. Use supportive, non-medical language
+5. Output must be valid JSON only
 
 ### OUTPUT FORMATS ###
 
